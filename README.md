@@ -23,6 +23,17 @@ python3.12 -m venv .venv
 
 Abre em <http://localhost:7860>. Em Apple Silicon usa a GPU via MPS automaticamente.
 
+## App de desktop
+
+A mesma interface numa janela nativa, sem navegador:
+
+```bash
+.venv/bin/pip install -r requirements-desktop.txt
+.venv/bin/python local.py
+```
+
+No macOS dá para deixar o `DeepDream.command` na mesa e abrir com dois cliques.
+
 Para gerar um link público temporário (72 h), tunelando para a sua máquina:
 
 ```bash
@@ -44,6 +55,10 @@ Camadas: `inception_3a` a `inception_5b`.
 docker build -t deepdream .
 docker run -p 7860:7860 deepdream
 ```
+
+O mesmo Dockerfile roda no Hugging Face Spaces (SDK `docker`), que é onde o app
+está hospedado. Serverless não serve: as dependências passam de 1 GB e o Gradio
+precisa de um servidor de longa duração.
 
 ## Variáveis de ambiente
 
