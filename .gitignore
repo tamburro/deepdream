@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Imagens de entrada e saída ficam fora do repo; só o exemplo entra.
+*.png
+*.jpg
+!exemplo.jpg
