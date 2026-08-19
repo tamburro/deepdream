@@ -113,6 +113,98 @@ def warp(image, previous_gray, current_gray):
     )
 
 
+DEFAULT_ZOOM = 0.02
+DEFAULT_ZOOM_FPS = 20
+
+
+def zoom_step(array, center, amount):
+    """Aproxima `amount` em direção a `center`, mantendo esse ponto fixo.
+
+    center é normalizado (0 a 1). A matriz afim escala por (1 + amount) e
+    translada de modo que o ponto escolhido caia sobre si mesmo.
+    """
+    height, width = array.shape[:2]
+    scale = 1.0 + amount
+    cx, cy = center[0] * width, center[1] * height
+    matrix = np.float32([
+        [scale, 0, cx * (1 - scale)],
+        [0, scale, cy * (1 - scale)],
+    ])
+    return cv2.warpAffine(
+        array, matrix, (width, height),
+        flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT,
+    )
+
+
+def zoom_video(
+    image,
+    output,
+    center=(0.5, 0.5),
+    duration=5.0,
+    fps=DEFAULT_ZOOM_FPS,
+    zoom=DEFAULT_ZOOM,
+    layers=(DEFAULT_LAYER,),
+    model=DEFAULT_MODEL,
+    iterations=DEFAULT_ITERATIONS,
+    step_size=DEFAULT_STEP_SIZE,
+    octaves=DEFAULT_OCTAVES,
+    octave_scale=DEFAULT_OCTAVE_SCALE,
+    jitter=DEFAULT_JITTER,
+    objective="l2",
+    seed=0,
+    device=None,
+    max_dim=DEFAULT_MAX_DIM,
+    on_frame=None,
+    verbose=False,
+):
+    """Zoom infinito a partir de uma imagem. Devolve o caminho de saída."""
+    if not shutil.which("ffmpeg"):
+        raise RuntimeError("ffmpeg não encontrado. Instale com: brew install ffmpeg")
+
+    image = image.convert("RGB")
+    if max_dim:
+        image.thumbnail((max_dim, max_dim), Image.LANCZOS)
+
+    frame = np.array(image)
+    # O libx264 exige dimensões pares.
+    height, width = frame.shape[0] // 2 * 2, frame.shape[1] // 2 * 2
+    frame = frame[:height, :width]
+
+    total = max(1, int(duration * fps))
+    write = encoder(output, (width, height), fps, None, False, None, None)
+
+    if verbose:
+        print(f"{width}x{height} @ {fps}fps, {total} quadros, "
+              f"centro em ({center[0]:.2f}, {center[1]:.2f})")
+
+    try:
+        for index in range(total):
+            dreamed = np.array(dream(
+                Image.fromarray(frame),
+                layers=layers, model=model, iterations=iterations,
+                step_size=step_size, octaves=octaves, octave_scale=octave_scale,
+                jitter=jitter, max_dim=None, objective=objective,
+                seed=seed, device=device,
+            ))
+            write.stdin.write(dreamed.tobytes())
+
+            # O próximo quadro parte do atual já aproximado: é isso que faz o
+            # zoom parecer infinito, com detalhe novo nascendo no centro.
+            frame = zoom_step(dreamed, center, zoom)
+
+            if on_frame:
+                on_frame(index + 1, total)
+            if verbose:
+                print(f"\rQuadro {index + 1}/{total}", end="", flush=True)
+    finally:
+        if verbose:
+            print()
+        write.stdin.close()
+        write.wait()
+
+    return output
+
+
 def process(
     source,
     output,

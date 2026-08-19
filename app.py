@@ -26,6 +26,7 @@ except ImportError:
             return fn if fn is not None else (lambda f: f)
 
 import gradio as gr
+from PIL import ImageDraw
 
 try:
     import video as video_module
@@ -184,6 +185,57 @@ def apply_video_preset(name):
     return MODEL_LABELS[p["model"]], p["layers"], p["step_size"]
 
 
+def mark_center(image, evt: gr.SelectData):
+    """Desenha uma mira no ponto clicado e devolve o centro normalizado."""
+    if image is None:
+        return None, (0.5, 0.5), "Centro: meio da imagem"
+
+    x, y = evt.index
+    center = (x / image.width, y / image.height)
+
+    marked = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(marked)
+    radius = max(8, min(marked.width, marked.height) // 40)
+    for width, color in ((4, "black"), (2, "white")):
+        draw.ellipse([x - radius, y - radius, x + radius, y + radius],
+                     outline=color, width=width)
+        draw.line([x - radius * 2, y, x + radius * 2, y], fill=color, width=width)
+        draw.line([x, y - radius * 2, x, y + radius * 2], fill=color, width=width)
+
+    return marked, center, f"Centro: {center[0]:.0%} × {center[1]:.0%}"
+
+
+def run_zoom(
+    image, center, model, layers, iterations, step_size, octaves,
+    duration, fps, zoom, max_dim, progress=gr.Progress(),
+):
+    if image is None:
+        raise gr.Error("Escolha uma imagem.")
+
+    def report(index, total):
+        progress(index / total, desc=f"Quadro {index}/{total}")
+
+    output = os.path.join(tempfile.mkdtemp(), "zoom.mp4")
+    try:
+        return video_module.zoom_video(
+            image, output,
+            center=center or (0.5, 0.5),
+            duration=duration,
+            fps=int(fps),
+            zoom=zoom,
+            layers=layers,
+            model=model.split(" — ")[0],
+            iterations=int(iterations),
+            step_size=step_size,
+            octaves=int(octaves),
+            max_dim=int(max_dim),
+            device=current_device(),
+            on_frame=report,
+        )
+    except RuntimeError as error:
+        raise gr.Error(str(error))
+
+
 with gr.Blocks(title="DeepDream") as demo:
     gr.Markdown(
         f"# DeepDream clássico\n"
@@ -305,6 +357,75 @@ with gr.Blocks(title="DeepDream") as demo:
                         video_step, video_octaves, video_blend, video_max_dim,
                         video_flow, video_start, video_duration],
                 outputs=video_out,
+            )
+
+    if VIDEO_OK:
+        with gr.Tab("Zoom infinito"):
+            gr.Markdown(
+                "Sonha um quadro, aproxima um pouco em direção ao ponto escolhido, "
+                "repete — detalhe novo nasce no centro sem parar. "
+                "**Clique na imagem** para escolher para onde o zoom vai."
+            )
+            with gr.Row():
+                with gr.Column(scale=2):
+                    zoom_image = gr.Image(type="pil", label="Imagem (clique para mirar)",
+                                          height=300)
+                    zoom_center = gr.State((0.5, 0.5))
+                    zoom_center_label = gr.Markdown("Centro: meio da imagem")
+                    zoom_marked = gr.Image(label="Ponto escolhido", height=220,
+                                           interactive=False)
+
+                    zoom_duration = gr.Slider(1, 30, value=5, step=1, label="Duração (s)")
+                    zoom_speed = gr.Slider(
+                        0.005, 0.08, value=video_module.DEFAULT_ZOOM, step=0.005,
+                        label="Velocidade do zoom",
+                        info="Quanto a imagem avança por quadro.",
+                    )
+                    zoom_button = gr.Button("Gerar zoom", variant="primary", size="lg")
+
+                    with gr.Accordion("Ajustes", open=False):
+                        zoom_model = gr.Dropdown(
+                            choices=[MODEL_LABELS[name] for name in MODELS],
+                            value=MODEL_LABELS[DEFAULT_MODEL], label="Modelo",
+                        )
+                        zoom_layers = gr.CheckboxGroup(
+                            choices=LAYER_CHOICES, value=["inception_4c/output"],
+                            label="Camadas",
+                        )
+                        zoom_iterations = gr.Slider(
+                            1, 40, value=video_module.DEFAULT_ITERATIONS, step=1,
+                            label="Iterações por quadro",
+                        )
+                        zoom_step = gr.Slider(0.1, 6.0, value=DEFAULT_STEP_SIZE, step=0.1,
+                                              label="Tamanho do passo")
+                        zoom_octaves = gr.Slider(
+                            1, 6, value=video_module.DEFAULT_OCTAVES, step=1,
+                            label="Octaves",
+                        )
+                        zoom_fps = gr.Slider(
+                            10, 30, value=video_module.DEFAULT_ZOOM_FPS, step=1, label="FPS",
+                        )
+                        zoom_max_dim = gr.Slider(
+                            256, 1024, value=512, step=64, label="Dimensão máxima",
+                        )
+
+                with gr.Column(scale=3):
+                    zoom_out = gr.Video(label="Resultado", height=520)
+                    gr.Markdown(
+                        "<sub>Conte ~0,4 s por quadro a 512px. 5 s a 20 fps são "
+                        "100 quadros, ou seja, cerca de 40 s de espera.</sub>"
+                    )
+
+            zoom_image.select(
+                mark_center, inputs=[zoom_image],
+                outputs=[zoom_marked, zoom_center, zoom_center_label],
+            )
+            zoom_button.click(
+                run_zoom,
+                inputs=[zoom_image, zoom_center, zoom_model, zoom_layers,
+                        zoom_iterations, zoom_step, zoom_octaves, zoom_duration,
+                        zoom_fps, zoom_speed, zoom_max_dim],
+                outputs=zoom_out,
             )
 
     preset.change(

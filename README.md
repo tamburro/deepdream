@@ -91,6 +91,26 @@ mais estabilidade e mais rastro), `--start` e `--duration` para recortar um
 trecho, `--max-dim` para a resolução, e `--no-flow` para ganhar velocidade
 abrindo mão da estabilidade.
 
+## Zoom infinito
+
+Gera um vídeo a partir de **uma** imagem: sonha um quadro, aproxima um pouco em
+direção a um ponto escolhido, e repete. Como cada quadro parte do anterior já
+aproximado, detalhe novo nasce no centro sem parar.
+
+Na interface (aba **Zoom infinito**) você clica na imagem para mirar o ponto e
+escolhe a duração. Por código:
+
+```python
+from PIL import Image
+import video
+
+video.zoom_video(Image.open("foto.jpg"), "zoom.mp4",
+                 center=(0.28, 0.22), duration=5, zoom=0.025)
+```
+
+`center` é normalizado (0 a 1) e `zoom` é o quanto a imagem avança por quadro.
+Conte ~0,4 s por quadro a 512px: 5 s a 20 fps são 100 quadros, cerca de 40 s.
+
 ## Plugin do Figma
 
 Exporta a camada selecionada, aplica o efeito e insere o resultado de volta no
