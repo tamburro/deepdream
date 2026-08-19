@@ -2,7 +2,7 @@
 
 Roda local (`python app.py`) ou hospedado. Configuração por variáveis de ambiente:
   DEEPDREAM_DEVICE   mps | cuda | cpu   (padrão: melhor disponível)
-  DEEPDREAM_MAX_DIM  teto de resolução  (padrão: 1536; baixe ao hospedar em CPU)
+  DEEPDREAM_MAX_DIM  teto de resolução  (padrão: 1536, ou 768 se estiver em CPU)
   DEEPDREAM_SHARE    1 para gerar link público temporário do Gradio
   PORT               porta do servidor  (padrão: 7860)
 """
@@ -26,7 +26,10 @@ from deepdream import (
 )
 
 DEVICE = pick_device(os.environ.get("DEEPDREAM_DEVICE"))
-MAX_DIM_CAP = int(os.environ.get("DEEPDREAM_MAX_DIM", 1536))
+
+# Em CPU (o caso de qualquer hospedagem gratuita) um teto alto vira espera longa.
+DEFAULT_MAX_DIM_CAP = 768 if DEVICE.type == "cpu" else 1536
+MAX_DIM_CAP = int(os.environ.get("DEEPDREAM_MAX_DIM", DEFAULT_MAX_DIM_CAP))
 
 LAYER_CHOICES = [f"{b}/output" for b in INCEPTION_BLOCKS]
 

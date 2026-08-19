@@ -1,3 +1,5 @@
+# Prefere as wheels de CPU do torch, bem menores que as padrão (que trazem CUDA).
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch
 torchvision
 pillow

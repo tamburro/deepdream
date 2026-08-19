@@ -3,8 +3,12 @@ title: DeepDream
 emoji: 🐕
 colorFrom: green
 colorTo: yellow
-sdk: docker
-app_port: 7860
+sdk: gradio
+sdk_version: 6.24.0
+app_file: app.py
+pinned: false
+license: apache-2.0
+short_description: DeepDream clássico do Google (2015) com os pesos bvlc_googlenet
 ---
 
 # DeepDream clássico
@@ -56,15 +60,15 @@ docker build -t deepdream .
 docker run -p 7860:7860 deepdream
 ```
 
-O mesmo Dockerfile roda no Hugging Face Spaces (SDK `docker`), que é onde o app
-está hospedado. Serverless não serve: as dependências passam de 1 GB e o Gradio
-precisa de um servidor de longa duração.
+O Dockerfile serve para auto-hospedagem. No Hugging Face Spaces o app usa o SDK
+`gradio` (gratuito), não o `docker` (pago). Serverless não serve em nenhum caso:
+as dependências passam de 1 GB e o Gradio precisa de um servidor de longa duração.
 
 ## Variáveis de ambiente
 
 | Variável | Padrão | Para quê |
 | --- | --- | --- |
 | `DEEPDREAM_DEVICE` | melhor disponível | `mps`, `cuda` ou `cpu` |
-| `DEEPDREAM_MAX_DIM` | 1536 | Teto de resolução; baixe ao hospedar em CPU |
+| `DEEPDREAM_MAX_DIM` | 1536 (768 em CPU) | Teto de resolução |
 | `DEEPDREAM_SHARE` | — | `1` gera link público temporário |
 | `PORT` | 7860 | Porta do servidor |
