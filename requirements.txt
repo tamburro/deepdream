@@ -3,6 +3,6 @@ torchvision
 pillow
 numpy
 scipy
-gradio
+gradio==6.24.0
 spaces
 git+https://github.com/crowsonkb/pytorch-caffe-models
