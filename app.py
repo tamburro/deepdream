@@ -5,11 +5,16 @@ Roda local (`python app.py`) ou hospedado. Configuração por variáveis de ambi
   DEEPDREAM_MAX_DIM  teto de resolução  (padrão: 1536, ou 768 se estiver em CPU)
   DEEPDREAM_SHARE    1 para gerar link público temporário do Gradio
   PORT               porta do servidor  (padrão: 7860)
+  DEEPDREAM_OUTPUT_DIR       onde salvar as saídas (padrão: $TMPDIR/deepdream)
+  DEEPDREAM_OUTPUT_MAX_AGE_H horas até uma saída ser apagada (padrão: 24)
 """
 
 import os
 import shutil
 import tempfile
+import time
+import uuid
+from pathlib import Path
 
 # No ZeroGPU o pacote spaces precisa ser importado antes do torch. Fora dele,
 # o pacote não existe e o decorador vira um no-op.
@@ -47,6 +52,32 @@ from deepdream import (
     dream,
     pick_device,
 )
+
+# Uma pasta só, previsível, em vez de um mkdtemp novo por geração — assim dá
+# para achar os arquivos, e a limpeza acontece sozinha.
+OUTPUT_DIR = Path(
+    os.environ.get("DEEPDREAM_OUTPUT_DIR", Path(tempfile.gettempdir()) / "deepdream")
+)
+OUTPUT_MAX_AGE = float(os.environ.get("DEEPDREAM_OUTPUT_MAX_AGE_H", 24)) * 3600
+
+
+def output_path(suffix):
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    return str(OUTPUT_DIR / f"{stamp}-{uuid.uuid4().hex[:6]}{suffix}")
+
+
+def prune_outputs():
+    """Apaga saídas antigas na inicialização, para a pasta não crescer sem fim."""
+    if not OUTPUT_DIR.exists():
+        return
+    cutoff = time.time() - OUTPUT_MAX_AGE
+    for item in OUTPUT_DIR.iterdir():
+        if item.is_file() and item.stat().st_mtime < cutoff:
+            item.unlink(missing_ok=True)
+
+
+prune_outputs()
 
 FORCED_DEVICE = os.environ.get("DEEPDREAM_DEVICE")
 
@@ -141,7 +172,7 @@ def run(
         on_step=report,
     )
 
-    path = os.path.join(tempfile.mkdtemp(), "deepdream.png")
+    path = output_path(".png")
     result.save(path)
     return (image, result), path
 
@@ -159,7 +190,7 @@ def run_video(
         else:
             progress(0, desc=f"Quadro {index}")
 
-    output = os.path.join(tempfile.mkdtemp(), "deepdream.mp4")
+    output = output_path(".mp4")
     try:
         return video_module.process(
             path, output,
@@ -215,7 +246,7 @@ def run_zoom(
     def report(index, total):
         progress(index / total, desc=f"Quadro {index}/{total}")
 
-    output = os.path.join(tempfile.mkdtemp(), "zoom.mp4")
+    output = output_path("-zoom.mp4")
     try:
         return video_module.zoom_video(
             image, output,
@@ -242,6 +273,10 @@ with gr.Blocks(title="DeepDream") as demo:
         f"Reprodução do DeepDream original do Google (2015), com os pesos "
         f"`bvlc_googlenet` do Caffe. Rodando em "
         f"`{'ZeroGPU' if ZEROGPU else _startup_device.type}`."
+    )
+    gr.Markdown(
+        f"<sub>As saídas ficam em <code>{OUTPUT_DIR}</code> e são apagadas "
+        f"depois de {int(OUTPUT_MAX_AGE / 3600)} h. Baixe o que quiser guardar.</sub>"
     )
 
     with gr.Tab("Imagem"):

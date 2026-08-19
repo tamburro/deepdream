@@ -146,3 +146,20 @@ cópia para a GPU a cada chamada.
 | `DEEPDREAM_MAX_DIM` | 1536 (768 em CPU) | Teto de resolução |
 | `DEEPDREAM_SHARE` | — | `1` gera link público temporário |
 | `PORT` | 7860 | Porta do servidor |
+| `DEEPDREAM_OUTPUT_DIR` | `$TMPDIR/deepdream` | Onde as saídas são gravadas |
+| `DEEPDREAM_OUTPUT_MAX_AGE_H` | 24 | Horas até uma saída ser apagada |
+
+### Onde ficam os arquivos
+
+As imagens e vídeos gerados pela interface vão para uma pasta única
+(`$TMPDIR/deepdream` por padrão, mostrada no topo da própria interface) com nome
+`AAAAMMDD-HHMMSS-xxxxxx`. Saídas com mais de 24 h são apagadas quando o app
+sobe. **Baixe o que quiser guardar** — ou aponte `DEEPDREAM_OUTPUT_DIR` para
+uma pasta permanente.
+
+A CLI é diferente: ela escreve onde você mandar, e nada é apagado.
+
+Além disso, o Gradio mantém cache próprio de uploads em `$TMPDIR/gradio`
+(controlado por `GRADIO_TEMP_DIR`), e os pesos dos modelos ficam em
+`~/.cache/torch`, que são permanentes de propósito — apagá-los só força novo
+download.
