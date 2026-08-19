@@ -216,6 +216,55 @@ def apply_video_preset(name):
     return MODEL_LABELS[p["model"]], p["layers"], p["step_size"]
 
 
+GRADIO_CACHE = Path(os.environ.get("GRADIO_TEMP_DIR", Path(tempfile.gettempdir()) / "gradio"))
+
+
+def _folder_size(folder):
+    if not folder.exists():
+        return 0, 0
+    files = [f for f in folder.rglob("*") if f.is_file()]
+    return len(files), sum(f.stat().st_size for f in files)
+
+
+def _human(size):
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit != "GB" else f"{size:.1f} {unit}"
+        size /= 1024
+
+
+def cache_usage():
+    ours_count, ours_size = _folder_size(OUTPUT_DIR)
+    gradio_count, gradio_size = _folder_size(GRADIO_CACHE)
+    return (
+        f"**Saídas geradas:** {ours_count} arquivos, {_human(ours_size)} — "
+        f"`{OUTPUT_DIR}`<br>"
+        f"**Cache do Gradio:** {gradio_count} arquivos, {_human(gradio_size)} — "
+        f"`{GRADIO_CACHE}`"
+    )
+
+
+def clear_cache(include_gradio):
+    """Apaga as saídas geradas. Nunca toca nos pesos dos modelos em ~/.cache/torch,
+    porque apagá-los só forçaria baixar tudo de novo."""
+    freed = 0
+    folders = [OUTPUT_DIR] + ([GRADIO_CACHE] if include_gradio else [])
+
+    for folder in folders:
+        if not folder.exists():
+            continue
+        for item in folder.rglob("*"):
+            if item.is_file():
+                try:
+                    freed += item.stat().st_size
+                    item.unlink()
+                except OSError:
+                    pass
+
+    gr.Info(f"Liberado: {_human(freed)}")
+    return cache_usage()
+
+
 def mark_center(image, evt: gr.SelectData):
     """Desenha uma mira no ponto clicado e devolve o centro normalizado."""
     if image is None:
@@ -410,6 +459,9 @@ with gr.Blocks(title="DeepDream") as demo:
                     zoom_marked = gr.Image(label="Ponto escolhido", height=220,
                                            interactive=False)
 
+                    zoom_preset = gr.Radio(
+                        choices=list(PRESETS), value="Clássico 2015", label="Preset"
+                    )
                     zoom_duration = gr.Slider(1, 30, value=5, step=1, label="Duração (s)")
                     zoom_speed = gr.Slider(
                         0.005, 0.08, value=video_module.DEFAULT_ZOOM, step=0.005,
@@ -451,6 +503,10 @@ with gr.Blocks(title="DeepDream") as demo:
                         "100 quadros, ou seja, cerca de 40 s de espera.</sub>"
                     )
 
+            zoom_preset.change(
+                apply_video_preset, inputs=[zoom_preset],
+                outputs=[zoom_model, zoom_layers, zoom_step],
+            )
             zoom_image.select(
                 mark_center, inputs=[zoom_image],
                 outputs=[zoom_marked, zoom_center, zoom_center_label],
@@ -462,6 +518,24 @@ with gr.Blocks(title="DeepDream") as demo:
                         zoom_fps, zoom_speed, zoom_max_dim],
                 outputs=zoom_out,
             )
+
+    with gr.Accordion("Manutenção", open=False):
+        usage = gr.Markdown(cache_usage())
+        include_gradio = gr.Checkbox(
+            value=False, label="Incluir o cache do Gradio",
+            info="Também apaga uploads e miniaturas. Resultados já exibidos "
+                 "na tela podem deixar de carregar até você gerar de novo.",
+        )
+        with gr.Row():
+            refresh_button = gr.Button("Atualizar", size="sm")
+            clear_button = gr.Button("Limpar cache", variant="stop", size="sm")
+        gr.Markdown(
+            "<sub>Os pesos dos modelos (`~/.cache/torch`) nunca são apagados — "
+            "removê-los só forçaria baixar tudo outra vez.</sub>"
+        )
+
+        refresh_button.click(cache_usage, outputs=usage)
+        clear_button.click(clear_cache, inputs=[include_gradio], outputs=usage)
 
     preset.change(
         apply_preset, inputs=[preset],

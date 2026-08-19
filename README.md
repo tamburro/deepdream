@@ -149,6 +149,8 @@ cópia para a GPU a cada chamada.
 | `DEEPDREAM_OUTPUT_DIR` | `$TMPDIR/deepdream` | Onde as saídas são gravadas |
 | `DEEPDREAM_OUTPUT_MAX_AGE_H` | 24 | Horas até uma saída ser apagada |
 
+A interface tem uma seção **Manutenção** com o uso atual e um botão para limpar.
+
 ### Onde ficam os arquivos
 
 As imagens e vídeos gerados pela interface vão para uma pasta única
