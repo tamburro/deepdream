@@ -61,7 +61,8 @@
 </div>
 
 <script>
-  const API = "http://127.0.0.1:8000";
+  // O Figma rejeita IP numérico em allowedDomains, então tem de ser o hostname.
+  const API = "http://localhost:8000";
   const status = document.getElementById("status");
   const run = document.getElementById("run");
   let selectionCount = 0;

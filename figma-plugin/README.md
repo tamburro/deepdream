@@ -20,11 +20,21 @@ rodando na sua máquina e insere o resultado de volta no documento.
 O resultado entra como um retângulo novo ao lado do original, com a imagem como
 preenchimento. Nada é sobrescrito.
 
-## Por que só no app de desktop
+## Detalhes que custaram caro
 
-O Figma no navegador roda em HTTPS, e uma página HTTPS não pode chamar
-`http://127.0.0.1`. O app de desktop não tem essa restrição. Se precisar do
-plugin no navegador, a API teria que estar atrás de HTTPS.
+**O manifesto não aceita IP numérico.** `http://127.0.0.1:8000` é recusado com
+"must be a valid URL"; tem de ser `http://localhost:8000`. Por isso o `ui.html`
+também chama `localhost`.
+
+**O Chrome barra rede local por padrão.** No Figma web, a página é pública e a
+API é local — o Private Network Access exige que o servidor responda
+`Access-Control-Allow-Private-Network: true` no preflight. O `server.py` faz
+isso via `allow_private_network=True` no CORSMiddleware; sem essa flag o
+preflight volta 400 com "Disallowed CORS private-network", mesmo com o CORS
+todo liberado.
+
+Com os dois resolvidos, o plugin funciona tanto no app de desktop quanto no
+Figma web.
 
 ## A API
 

@@ -41,6 +41,10 @@ api.add_middleware(
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
+    # O Figma no navegador é uma página pública chamando um servidor da rede
+    # local. Sem isto o Chrome barra a requisição no preflight, mesmo com o
+    # CORS liberado.
+    allow_private_network=True,
 )
 
 
