@@ -38,7 +38,7 @@ def main():
         raise RuntimeError("O servidor Gradio não subiu a tempo.")
 
     webview.create_window(
-        "DeepDream",
+        "Dream Canvas",
         f"http://127.0.0.1:{port}",
         width=1280,
         height=900,

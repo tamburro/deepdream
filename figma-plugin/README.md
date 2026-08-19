@@ -1,4 +1,4 @@
-# Plugin do Figma
+# Dream Canvas — plugin do Figma
 
 Plugins do Figma rodam JavaScript num sandbox — não há como executar PyTorch lá
 dentro. Então o plugin exporta o nó selecionado como PNG, manda para o DeepDream

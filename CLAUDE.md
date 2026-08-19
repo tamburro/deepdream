@@ -1,4 +1,4 @@
-# DeepDream clássico local
+# Dream Canvas
 
 Reproduz o DeepDream original do Google (Mordvintsev, 2015), não o tutorial em
 TensorFlow. O objetivo do projeto é fidelidade ao resultado de 2015.

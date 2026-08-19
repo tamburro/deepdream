@@ -1,4 +1,4 @@
-"""Interface web do DeepDream clássico.
+"""Interface web do Dream Canvas.
 
 Roda local (`python app.py`) ou hospedado. Configuração por variáveis de ambiente:
   DEEPDREAM_DEVICE   mps | cuda | cpu   (padrão: melhor disponível)
@@ -316,9 +316,9 @@ def run_zoom(
         raise gr.Error(str(error))
 
 
-with gr.Blocks(title="DeepDream") as demo:
+with gr.Blocks(title="Dream Canvas") as demo:
     gr.Markdown(
-        f"# DeepDream clássico\n"
+        f"# Dream Canvas\n"
         f"Reprodução do DeepDream original do Google (2015), com os pesos "
         f"`bvlc_googlenet` do Caffe. Rodando em "
         f"`{'ZeroGPU' if ZEROGPU else _startup_device.type}`."

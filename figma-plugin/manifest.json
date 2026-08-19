@@ -1,6 +1,6 @@
 {
-  "name": "DeepDream",
-  "id": "deepdream-local",
+  "name": "Dream Canvas",
+  "id": "dream-canvas",
   "api": "1.0.0",
   "main": "code.js",
   "ui": "ui.html",

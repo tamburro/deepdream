@@ -1,5 +1,5 @@
 ---
-title: DeepDream
+title: Dream Canvas
 emoji: 🐕
 colorFrom: green
 colorTo: yellow
@@ -11,7 +11,7 @@ license: apache-2.0
 short_description: DeepDream clássico do Google (2015) com os pesos bvlc_googlenet
 ---
 
-# DeepDream clássico
+# Dream Canvas
 
 Reprodução do DeepDream original do Google (Mordvintsev, 2015) em PyTorch, com
 os pesos `bvlc_googlenet` do Caffe — não o InceptionV3 do tutorial em TensorFlow.
@@ -36,7 +36,7 @@ A mesma interface numa janela nativa, sem navegador:
 .venv/bin/python local.py
 ```
 
-No macOS dá para deixar o `DeepDream.command` na mesa e abrir com dois cliques.
+No macOS dá para deixar o `Dream Canvas.command` na mesa e abrir com dois cliques.
 
 Para gerar um link público temporário (72 h), tunelando para a sua máquina:
 

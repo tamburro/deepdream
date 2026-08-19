@@ -1,4 +1,4 @@
-"""API HTTP do DeepDream, para integrações externas (ex.: o plugin do Figma).
+"""API HTTP do Dream Canvas, para integrações externas (ex.: o plugin do Figma).
 
 Separada da interface Gradio de propósito: aqui o contrato é simples e estável
 — manda PNG em base64, recebe PNG em base64.
@@ -35,7 +35,7 @@ from deepdream import (
 
 DEVICE = pick_device(os.environ.get("DEEPDREAM_DEVICE"))
 
-api = FastAPI(title="DeepDream")
+api = FastAPI(title="Dream Canvas")
 api.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
