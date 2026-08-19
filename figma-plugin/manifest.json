@@ -1,0 +1,13 @@
+{
+  "name": "DeepDream",
+  "id": "deepdream-local",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["http://127.0.0.1:8000", "http://localhost:8000"],
+    "reasoning": "Envia o nó selecionado para o DeepDream rodando na máquina do usuário e recebe a imagem processada de volta."
+  }
+}

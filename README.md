@@ -91,6 +91,17 @@ mais estabilidade e mais rastro), `--start` e `--duration` para recortar um
 trecho, `--max-dim` para a resolução, e `--no-flow` para ganhar velocidade
 abrindo mão da estabilidade.
 
+## Plugin do Figma
+
+Exporta a camada selecionada, aplica o efeito e insere o resultado de volta no
+documento. Veja [figma-plugin/README.md](figma-plugin/README.md).
+
+Ele conversa com a API HTTP, que também serve para qualquer outra integração:
+
+```bash
+.venv/bin/python server.py
+```
+
 ## Docker
 
 ```bash

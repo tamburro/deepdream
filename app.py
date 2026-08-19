@@ -196,6 +196,11 @@ with gr.Blocks(title="DeepDream") as demo:
         with gr.Row():
             with gr.Column(scale=2):
                 image = gr.Image(type="pil", label="Imagem", height=320)
+                if VIDEO_OK:
+                    gr.Markdown(
+                        "<sub>Só imagem aqui. Para vídeo, use a aba "
+                        "**Vídeo** acima.</sub>"
+                    )
                 preset = gr.Radio(
                     choices=list(PRESETS), value="Clássico 2015", label="Preset"
                 )
