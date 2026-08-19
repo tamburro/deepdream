@@ -10,6 +10,20 @@ Roda local (`python app.py`) ou hospedado. Configuração por variáveis de ambi
 import os
 import tempfile
 
+# No ZeroGPU o pacote spaces precisa ser importado antes do torch. Fora dele,
+# o pacote não existe e o decorador vira um no-op.
+try:
+    import spaces
+
+    ZEROGPU = True
+except ImportError:
+    ZEROGPU = False
+
+    class spaces:  # noqa: N801
+        @staticmethod
+        def GPU(fn=None, **kwargs):
+            return fn if fn is not None else (lambda f: f)
+
 import gradio as gr
 
 from deepdream import (
@@ -25,10 +39,17 @@ from deepdream import (
     pick_device,
 )
 
-DEVICE = pick_device(os.environ.get("DEEPDREAM_DEVICE"))
+FORCED_DEVICE = os.environ.get("DEEPDREAM_DEVICE")
 
-# Em CPU (o caso de qualquer hospedagem gratuita) um teto alto vira espera longa.
-DEFAULT_MAX_DIM_CAP = 768 if DEVICE.type == "cpu" else 1536
+# No ZeroGPU a GPU só existe dentro da função decorada, então o device é
+# resolvido a cada execução, e não uma vez na importação.
+def current_device():
+    return pick_device(FORCED_DEVICE)
+
+
+# Em CPU pura um teto alto vira espera longa; no ZeroGPU há GPU de sobra.
+_startup_device = current_device()
+DEFAULT_MAX_DIM_CAP = 768 if _startup_device.type == "cpu" and not ZEROGPU else 1536
 MAX_DIM_CAP = int(os.environ.get("DEEPDREAM_MAX_DIM", DEFAULT_MAX_DIM_CAP))
 
 LAYER_CHOICES = [f"{b}/output" for b in INCEPTION_BLOCKS]
@@ -82,6 +103,7 @@ def apply_preset(name):
     )
 
 
+@spaces.GPU(duration=120)
 def run(
     image, model, layers, iterations, step_size, octaves, octave_scale,
     jitter, max_dim, objective, seed, progress=gr.Progress(),
@@ -106,7 +128,7 @@ def run(
         max_dim=min(int(max_dim), MAX_DIM_CAP),
         objective=objective,
         seed=int(seed) if seed is not None else None,
-        device=DEVICE,
+        device=current_device(),
         on_step=report,
     )
 
@@ -119,7 +141,8 @@ with gr.Blocks(title="DeepDream") as demo:
     gr.Markdown(
         f"# DeepDream clássico\n"
         f"Reprodução do DeepDream original do Google (2015), com os pesos "
-        f"`bvlc_googlenet` do Caffe. Rodando em `{DEVICE.type}`."
+        f"`bvlc_googlenet` do Caffe. Rodando em "
+        f"`{'ZeroGPU' if ZEROGPU else _startup_device.type}`."
     )
 
     with gr.Row():

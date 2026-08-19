@@ -60,9 +60,14 @@ docker build -t deepdream .
 docker run -p 7860:7860 deepdream
 ```
 
-O Dockerfile serve para auto-hospedagem. No Hugging Face Spaces o app usa o SDK
-`gradio` (gratuito), não o `docker` (pago). Serverless não serve em nenhum caso:
-as dependências passam de 1 GB e o Gradio precisa de um servidor de longa duração.
+O Dockerfile serve para auto-hospedagem, e usa wheels de CPU do torch. No Hugging
+Face Spaces o app usa o SDK `gradio` com hardware ZeroGPU — ambos gratuitos; o SDK
+`docker` e o CPU Basic são pagos. Serverless não serve em nenhum caso: as
+dependências passam de 1 GB e o Gradio precisa de um servidor de longa duração.
+
+No ZeroGPU a GPU só existe dentro da função decorada com `@spaces.GPU`, por isso o
+device é resolvido a cada execução e os pesos ficam em cache na CPU, movidos por
+cópia para a GPU a cada chamada.
 
 ## Variáveis de ambiente
 

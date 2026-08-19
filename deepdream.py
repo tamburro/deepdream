@@ -7,6 +7,7 @@ absoluta do gradiente e pirâmide de octaves com reinjeção de detalhe.
 """
 
 import argparse
+import copy
 from pathlib import Path
 
 import numpy as np
@@ -128,11 +129,16 @@ class FeatureExtractor(nn.Module):
 
         if model_name not in _CACHE:
             _CACHE[model_name] = loader()
-        base, self.transform = _CACHE[model_name]
+        base, transform = _CACHE[model_name]
         base.eval()
+        # O transform do torchvision tem buffers, então também precisa ser cópia.
+        self.transform = copy.deepcopy(transform)
 
+        # Cópia: o cache guarda o modelo em CPU e os blocos movidos para a GPU
+        # precisam ser independentes dele (o ZeroGPU derruba o contexto CUDA
+        # entre chamadas, e um cache apontando para tensores CUDA fica inválido).
         self.blocks = nn.ModuleList(
-            getattr(base, name) for name in order[: indices[-1] + 1]
+            copy.deepcopy(getattr(base, name)) for name in order[: indices[-1] + 1]
         )
         self.taps = set(indices)
 
