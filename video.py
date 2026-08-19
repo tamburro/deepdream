@@ -1,0 +1,228 @@
+"""DeepDream em vídeo, com coerência temporal.
+
+Sonhar cada quadro de forma independente produz um flicker violento: o processo
+é caótico e dois quadros quase iguais divergem completamente. Aqui o quadro
+sonhado anterior é deformado pelo fluxo óptico até a posição do quadro atual e
+misturado a ele antes de sonhar, o que faz os padrões grudarem nos objetos e
+acompanharem o movimento.
+
+Decodifica e codifica via pipes do ffmpeg, sem despejar milhares de PNGs em disco.
+"""
+
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import cv2
+import numpy as np
+from PIL import Image
+
+from deepdream import (
+    DEFAULT_JITTER,
+    DEFAULT_LAYER,
+    DEFAULT_MODEL,
+    DEFAULT_OCTAVE_SCALE,
+    DEFAULT_STEP_SIZE,
+    dream,
+)
+
+# Padrões pensados para vídeo, não para imagem isolada: menos iterações por
+# quadro, porque o efeito se acumula ao longo dos quadros pela realimentação.
+DEFAULT_ITERATIONS = 6
+DEFAULT_OCTAVES = 3
+DEFAULT_BLEND = 0.6
+DEFAULT_MAX_DIM = 640
+
+
+def probe(path):
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-print_format", "json",
+         "-show_streams", "-show_format", str(path)],
+        capture_output=True, text=True, check=True,
+    ).stdout
+    info = json.loads(out)
+
+    video = next(s for s in info["streams"] if s["codec_type"] == "video")
+    has_audio = any(s["codec_type"] == "audio" for s in info["streams"])
+
+    num, den = video["r_frame_rate"].split("/")
+    fps = float(num) / float(den)
+
+    return {
+        "width": int(video["width"]),
+        "height": int(video["height"]),
+        "fps": fps,
+        "duration": float(info["format"].get("duration", 0)),
+        "has_audio": has_audio,
+    }
+
+
+def output_size(width, height, max_dim):
+    scale = min(max_dim / max(width, height), 1.0)
+    # O libx264 exige dimensões pares.
+    return (max(2, int(width * scale) // 2 * 2), max(2, int(height * scale) // 2 * 2))
+
+
+def decoder(path, size, start, duration):
+    cmd = ["ffmpeg", "-v", "error"]
+    if start:
+        cmd += ["-ss", str(start)]
+    cmd += ["-i", str(path)]
+    if duration:
+        cmd += ["-t", str(duration)]
+    cmd += ["-vf", f"scale={size[0]}:{size[1]}", "-f", "rawvideo",
+            "-pix_fmt", "rgb24", "-"]
+    return subprocess.Popen(cmd, stdout=subprocess.PIPE)
+
+
+def encoder(path, size, fps, source, has_audio, start, duration):
+    cmd = [
+        "ffmpeg", "-v", "error", "-y",
+        "-f", "rawvideo", "-pix_fmt", "rgb24",
+        "-s", f"{size[0]}x{size[1]}", "-r", str(fps), "-i", "-",
+    ]
+    if has_audio:
+        if start:
+            cmd += ["-ss", str(start)]
+        cmd += ["-i", str(source)]
+        if duration:
+            cmd += ["-t", str(duration)]
+        cmd += ["-map", "0:v", "-map", "1:a", "-c:a", "aac", "-shortest"]
+    cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(path)]
+    return subprocess.Popen(cmd, stdin=subprocess.PIPE)
+
+
+def warp(image, previous_gray, current_gray):
+    """Leva `image` (alinhada ao quadro anterior) para a posição do quadro atual.
+
+    O fluxo é calculado do quadro atual para o anterior porque o remap busca,
+    para cada pixel de destino, onde ele estava na origem.
+    """
+    flow = cv2.calcOpticalFlowFarneback(
+        current_gray, previous_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
+    )
+    height, width = flow.shape[:2]
+    grid_x, grid_y = np.meshgrid(np.arange(width), np.arange(height))
+    map_x = (grid_x + flow[..., 0]).astype(np.float32)
+    map_y = (grid_y + flow[..., 1]).astype(np.float32)
+    return cv2.remap(
+        image, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT
+    )
+
+
+def run(args):
+    if not shutil.which("ffmpeg"):
+        sys.exit("ffmpeg não encontrado. Instale com: brew install ffmpeg")
+
+    info = probe(args.input)
+    size = output_size(info["width"], info["height"], args.max_dim)
+    fps = args.fps or info["fps"]
+    frame_bytes = size[0] * size[1] * 3
+
+    span = args.duration or max(0.0, info["duration"] - (args.start or 0))
+    expected = int(span * info["fps"]) if span else 0
+
+    print(f"{info['width']}x{info['height']} @ {info['fps']:.2f}fps "
+          f"-> {size[0]}x{size[1]} @ {fps:.2f}fps"
+          + (f", ~{expected} quadros" if expected else ""))
+
+    read = decoder(args.input, size, args.start, args.duration)
+    write = encoder(args.output, size, fps, args.input, info["has_audio"] and not args.no_audio,
+                    args.start, args.duration)
+
+    previous_dream = None
+    previous_gray = None
+    index = 0
+
+    try:
+        while True:
+            raw = read.stdout.read(frame_bytes)
+            if len(raw) < frame_bytes:
+                break
+
+            frame = np.frombuffer(raw, np.uint8).reshape(size[1], size[0], 3)
+            gray = cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+            base = frame.astype(np.float32)
+
+            if previous_dream is not None:
+                carried = previous_dream.astype(np.float32)
+                if not args.no_flow:
+                    carried = warp(carried, previous_gray, gray)
+                base = (1 - args.blend) * base + args.blend * carried
+
+            dreamed = dream(
+                Image.fromarray(np.clip(base, 0, 255).astype(np.uint8)),
+                layers=args.layers,
+                model=args.model,
+                iterations=args.iterations,
+                step_size=args.step_size,
+                octaves=args.octaves,
+                octave_scale=args.octave_scale,
+                jitter=args.jitter,
+                max_dim=None,
+                objective=args.objective,
+                # A mesma seed em todo quadro mantém o padrão de jitter idêntico,
+                # o que reduz bastante o flicker residual.
+                seed=args.seed,
+                device=args.device,
+            )
+
+            previous_dream = np.array(dreamed)
+            previous_gray = gray
+            write.stdin.write(previous_dream.tobytes())
+
+            index += 1
+            suffix = f"/{expected}" if expected else ""
+            print(f"\rQuadro {index}{suffix}", end="", flush=True)
+    finally:
+        print()
+        read.stdout.close()
+        read.wait()
+        write.stdin.close()
+        write.wait()
+
+    if index == 0:
+        sys.exit("Nenhum quadro foi lido. O arquivo de entrada é um vídeo válido?")
+    print(f"Salvo em {args.output} ({index} quadros)")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="DeepDream em vídeo.")
+    parser.add_argument("input", type=Path)
+    parser.add_argument("-o", "--output", type=Path)
+    parser.add_argument("-l", "--layers", default=DEFAULT_LAYER)
+    parser.add_argument("-m", "--model", default=DEFAULT_MODEL)
+    parser.add_argument("-n", "--iterations", type=int, default=DEFAULT_ITERATIONS)
+    parser.add_argument("--step-size", type=float, default=DEFAULT_STEP_SIZE)
+    parser.add_argument("--octaves", type=int, default=DEFAULT_OCTAVES)
+    parser.add_argument("--octave-scale", type=float, default=DEFAULT_OCTAVE_SCALE)
+    parser.add_argument("--jitter", type=int, default=DEFAULT_JITTER)
+    parser.add_argument("--objective", choices=["l2", "mean"], default="l2")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--device", choices=["mps", "cuda", "cpu"])
+    parser.add_argument("--max-dim", type=int, default=DEFAULT_MAX_DIM)
+    parser.add_argument("--fps", type=float)
+    parser.add_argument("--start", type=float, help="Segundo inicial do trecho")
+    parser.add_argument("--duration", type=float, help="Duração do trecho, em segundos")
+    parser.add_argument(
+        "--blend", type=float, default=DEFAULT_BLEND,
+        help="Quanto do quadro sonhado anterior é realimentado (0 a 1). "
+             "Mais alto: mais estável e com mais rastro.",
+    )
+    parser.add_argument("--no-flow", action="store_true",
+                        help="Não usar fluxo óptico (mais rápido, menos estável)")
+    parser.add_argument("--no-audio", action="store_true")
+    args = parser.parse_args()
+
+    args.layers = [s for s in args.layers.split(",") if s.strip()]
+    if args.output is None:
+        args.output = args.input.with_name(f"{args.input.stem}_dream.mp4")
+
+    run(args)
+
+
+if __name__ == "__main__":
+    main()

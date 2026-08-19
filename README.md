@@ -53,6 +53,42 @@ DEEPDREAM_SHARE=1 .venv/bin/python app.py
 Modelos: `bvlc` (padrão), `places365`, `places205`, `torchvision`.
 Camadas: `inception_3a` a `inception_5b`.
 
+## Vídeo
+
+Aplica o efeito a um vídeo inteiro, com coerência temporal:
+
+```bash
+.venv/bin/pip install -r requirements-video.txt
+.venv/bin/python video.py entrada.mp4 -o saida.mp4
+```
+
+Exige o `ffmpeg` no sistema (`brew install ffmpeg`). O áudio do original é
+preservado.
+
+Sonhar cada quadro isoladamente pisca muito: o processo é caótico e dois quadros
+quase idênticos divergem por completo. Aqui o quadro sonhado anterior é deformado
+pelo fluxo óptico até a posição do quadro atual e misturado a ele antes de sonhar,
+o que faz os padrões grudarem nos objetos e acompanharem o movimento. A mesma
+seed em todos os quadros mantém o padrão de jitter idêntico, o que remove parte
+do flicker residual.
+
+Medido num teste com zoom, o flicker com movimento compensado (menor é melhor):
+
+| | Flicker |
+| --- | --- |
+| Vídeo de entrada (piso do ruído) | 1,86 |
+| Quadro a quadro, sem realimentação | 6,69 |
+| Realimentado, sem fluxo óptico | 8,32 |
+| Realimentado + fluxo óptico | **4,58** |
+
+Note que realimentar **sem** fluxo é pior que não realimentar: o padrão fica
+parado enquanto a cena se move. É por isso que o fluxo óptico é o padrão.
+
+Opções úteis: `--blend` (quanto do quadro anterior é realimentado; mais alto dá
+mais estabilidade e mais rastro), `--start` e `--duration` para recortar um
+trecho, `--max-dim` para a resolução, e `--no-flow` para ganhar velocidade
+abrindo mão da estabilidade.
+
 ## Docker
 
 ```bash
