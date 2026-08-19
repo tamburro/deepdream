@@ -9,6 +9,7 @@ import threading
 
 import webview
 
+import theme as dc_theme
 from app import demo
 
 
@@ -24,6 +25,8 @@ def main():
 
     def serve():
         demo.queue(default_concurrency_limit=1).launch(
+            theme=dc_theme.build_theme(),
+            css=dc_theme.CSS,
             server_name="127.0.0.1",
             server_port=port,
             share=False,

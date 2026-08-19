@@ -1,4 +1,4 @@
-"""Interface web do Dream Canvas.
+"""Interface do Dream Canvas.
 
 Roda local (`python app.py`) ou hospedado. Configuração por variáveis de ambiente:
   DEEPDREAM_DEVICE   mps | cuda | cpu   (padrão: melhor disponível)
@@ -33,6 +33,8 @@ except ImportError:
 import gradio as gr
 from PIL import ImageDraw
 
+import theme as dc_theme
+
 try:
     import video as video_module
 
@@ -40,6 +42,7 @@ try:
 except ImportError:
     video_module = None
     VIDEO_OK = False
+
 from deepdream import (
     DEFAULT_ITERATIONS,
     DEFAULT_JITTER,
@@ -59,6 +62,9 @@ OUTPUT_DIR = Path(
     os.environ.get("DEEPDREAM_OUTPUT_DIR", Path(tempfile.gettempdir()) / "deepdream")
 )
 OUTPUT_MAX_AGE = float(os.environ.get("DEEPDREAM_OUTPUT_MAX_AGE_H", 24)) * 3600
+GRADIO_CACHE = Path(
+    os.environ.get("GRADIO_TEMP_DIR", Path(tempfile.gettempdir()) / "gradio")
+)
 
 
 def output_path(suffix):
@@ -81,95 +87,97 @@ prune_outputs()
 
 FORCED_DEVICE = os.environ.get("DEEPDREAM_DEVICE")
 
+
 # No ZeroGPU a GPU só existe dentro da função decorada, então o device é
 # resolvido a cada execução, e não uma vez na importação.
 def current_device():
     return pick_device(FORCED_DEVICE)
 
 
-# Em CPU pura um teto alto vira espera longa; no ZeroGPU há GPU de sobra.
 _startup_device = current_device()
 DEFAULT_MAX_DIM_CAP = 768 if _startup_device.type == "cpu" and not ZEROGPU else 1536
 MAX_DIM_CAP = int(os.environ.get("DEEPDREAM_MAX_DIM", DEFAULT_MAX_DIM_CAP))
 
-LAYER_CHOICES = [f"{b}/output" for b in INCEPTION_BLOCKS]
+# Tuplas (rótulo, valor): o callback recebe a chave, sem precisar fatiar string.
+LAYER_CHOICES = [(b.replace("inception_", ""), f"{b}/output") for b in INCEPTION_BLOCKS]
 
-MODEL_LABELS = {
-    "bvlc": "bvlc — ImageNet, pesos Caffe originais (o DeepDream de 2015)",
-    "places365": "places365 — cenários: templos, arcos, arquitetura",
-    "places205": "places205 — cenários, versão antiga",
-    "torchvision": "torchvision — outro treinamento, com batchnorm: mais suave",
-}
+MODEL_CHOICES = [
+    ("Clássico — ImageNet, pesos originais de 2015", "bvlc"),
+    ("Cenários — templos, arcos, arquitetura", "places365"),
+    ("Cenários (versão antiga)", "places205"),
+    ("Suave — outro treinamento, formas mais discretas", "torchvision"),
+]
 
-# Combinações que valem a pena ter a um clique de distância.
+MODE_CHOICES = [("Clássico", "l2"), ("Suave", "mean")]
+
 PRESETS = {
     "Clássico 2015": dict(model="bvlc", layers=["inception_4c/output"], iterations=10,
                           step_size=1.5, octaves=4, octave_scale=1.4),
-    "Puppy slugs (forte)": dict(model="bvlc", layers=["inception_4c/output"], iterations=25,
-                                step_size=2.0, octaves=5, octave_scale=1.4),
+    "Focinhos por toda parte": dict(model="bvlc", layers=["inception_4c/output"], iterations=25,
+                                    step_size=2.0, octaves=5, octave_scale=1.4),
     "Criaturas híbridas": dict(model="bvlc", layers=["inception_4d/output"], iterations=20,
                                step_size=1.5, octaves=4, octave_scale=1.4),
-    "Quimeras bizarras": dict(model="bvlc", layers=["inception_5b/output"], iterations=40,
-                              step_size=2.0, octaves=4, octave_scale=1.4),
+    "Quimeras": dict(model="bvlc", layers=["inception_5b/output"], iterations=40,
+                     step_size=2.0, octaves=4, octave_scale=1.4),
     "Só textura": dict(model="bvlc", layers=["inception_3b/output"], iterations=10,
                        step_size=1.5, octaves=4, octave_scale=1.4),
     "Templos e arcos": dict(model="places365", layers=["inception_4d/output"], iterations=20,
                             step_size=1.5, octaves=4, octave_scale=1.4),
-    "Suave (torchvision)": dict(model="torchvision", layers=["inception_4c/output"], iterations=10,
-                                step_size=1.5, octaves=4, octave_scale=1.4),
+    "Discreto": dict(model="torchvision", layers=["inception_4c/output"], iterations=10,
+                     step_size=1.5, octaves=4, octave_scale=1.4),
 }
 
 LAYER_GUIDE = """
-| Camada | O que costuma brotar |
-| --- | --- |
-| `inception_3a` / `3b` | Traços, bordas e texturas simples |
-| `inception_4a` / `4b` | Espirais, olhos soltos, padrões repetidos |
-| **`inception_4c`** | **Focinhos de cachorro, pelos, olhos isolados — o visual clássico** |
-| `inception_4d` | Animais de corpo inteiro distorcidos, pássaros, híbridos |
-| `inception_4e` | Criaturas maiores, arquitetura, formas compostas |
-| `inception_5a` | Peixes, anfíbios, sapos, olhos reptilianos |
-| `inception_5b` | Quimeras: macacos, lagartos, cobras — o mais bizarro |
+Cada camada da rede aprendeu a reconhecer coisas diferentes. Escolher uma
+determina o que vai brotar da sua imagem.
 
-As camadas profundas (`5a`, `5b`) precisam de mais iterações que o padrão 10
-para render bem. O guia vale para os modelos treinados na ImageNet (`bvlc`).
+| Camada | O que brota |
+| --- | --- |
+| `3a` `3b` | Traços, bordas, textura pura |
+| `4a` `4b` | Espirais, olhos soltos, padrões repetidos |
+| `4c` | Focinhos, pelo, olhos isolados — o visual clássico de 2015 |
+| `4d` | Animais inteiros e distorcidos, pássaros, híbridos |
+| `4e` | Criaturas maiores, arquitetura, formas compostas |
+| `5a` | Peixes, anfíbios, olhos reptilianos |
+| `5b` | Quimeras: macacos, lagartos, cobras |
+
+As camadas fundas (`5a`, `5b`) precisam de 30 a 50 iterações para render bem.
+O guia vale para os modelos treinados na ImageNet — o Clássico e o Suave.
 """
 
 
+# ---------------------------------------------------------------- lógica
+
 def apply_preset(name):
     p = PRESETS[name]
-    return (
-        MODEL_LABELS[p["model"]], p["layers"], p["iterations"],
-        p["step_size"], p["octaves"], p["octave_scale"],
-    )
+    return (p["model"], p["layers"], p["iterations"],
+            p["step_size"], p["octaves"], p["octave_scale"])
+
+
+def apply_motion_preset(name):
+    """Presets em vídeo e zoom mexem só no estilo, não no ritmo."""
+    p = PRESETS[name]
+    return p["model"], p["layers"], p["step_size"]
 
 
 @spaces.GPU(duration=120)
-def run(
-    image, model, layers, iterations, step_size, octaves, octave_scale,
-    jitter, max_dim, objective, seed, progress=gr.Progress(),
-):
+def run(image, model, layers, iterations, step_size, octaves, octave_scale,
+        jitter, max_dim, mode, seed, progress=gr.Progress()):
     if image is None:
         raise gr.Error("Escolha uma imagem.")
     if not layers:
-        raise gr.Error("Selecione ao menos uma camada.")
+        raise gr.Error("Escolha ao menos uma camada.")
 
     def report(done, total, loss):
         progress(done / total, desc=f"Passo {done}/{total}")
 
     result = dream(
-        image,
-        layers=layers,
-        model=model.split(" — ")[0],
-        iterations=int(iterations),
-        step_size=step_size,
-        octaves=int(octaves),
-        octave_scale=octave_scale,
-        jitter=int(jitter),
-        max_dim=min(int(max_dim), MAX_DIM_CAP),
-        objective=objective,
-        seed=int(seed) if seed is not None else None,
-        device=current_device(),
-        on_step=report,
+        image, layers=layers, model=model,
+        iterations=int(iterations), step_size=step_size,
+        octaves=int(octaves), octave_scale=octave_scale,
+        jitter=int(jitter), max_dim=min(int(max_dim), MAX_DIM_CAP),
+        objective=mode, seed=int(seed) if seed is not None else None,
+        device=current_device(), on_step=report,
     )
 
     path = output_path(".png")
@@ -177,10 +185,8 @@ def run(
     return (image, result), path
 
 
-def run_video(
-    path, model, layers, iterations, step_size, octaves, blend,
-    max_dim, use_flow, start, duration, progress=gr.Progress(),
-):
+def run_video(path, model, layers, iterations, step_size, octaves, blend,
+              max_dim, use_flow, start, duration, progress=gr.Progress()):
     if not path:
         raise gr.Error("Escolha um vídeo.")
 
@@ -190,33 +196,56 @@ def run_video(
         else:
             progress(0, desc=f"Quadro {index}")
 
-    output = output_path(".mp4")
     try:
         return video_module.process(
-            path, output,
-            layers=layers,
-            model=model.split(" — ")[0],
-            iterations=int(iterations),
-            step_size=step_size,
-            octaves=int(octaves),
-            max_dim=int(max_dim),
-            blend=blend,
-            flow=use_flow,
-            start=start or None,
-            duration=duration or None,
-            device=current_device(),
-            on_frame=report,
+            path, output_path(".mp4"), layers=layers, model=model,
+            iterations=int(iterations), step_size=step_size, octaves=int(octaves),
+            max_dim=int(max_dim), blend=blend, flow=use_flow,
+            start=start or None, duration=duration or None,
+            device=current_device(), on_frame=report,
         )
     except RuntimeError as error:
         raise gr.Error(str(error))
 
 
-def apply_video_preset(name):
-    p = PRESETS[name]
-    return MODEL_LABELS[p["model"]], p["layers"], p["step_size"]
+def mark_center(image, evt: gr.SelectData):
+    """Desenha uma mira no ponto clicado e devolve o centro normalizado."""
+    if image is None:
+        return None, (0.5, 0.5), "Mirando no meio da imagem."
+
+    x, y = evt.index
+    center = (x / image.width, y / image.height)
+
+    marked = image.convert("RGB").copy()
+    draw = ImageDraw.Draw(marked)
+    radius = max(8, min(marked.width, marked.height) // 40)
+    for width, color in ((4, "black"), (2, "white")):
+        draw.ellipse([x - radius, y - radius, x + radius, y + radius],
+                     outline=color, width=width)
+        draw.line([x - radius * 2, y, x + radius * 2, y], fill=color, width=width)
+        draw.line([x, y - radius * 2, x, y + radius * 2], fill=color, width=width)
+
+    return marked, center, f"Mirando em {center[0]:.0%} × {center[1]:.0%}."
 
 
-GRADIO_CACHE = Path(os.environ.get("GRADIO_TEMP_DIR", Path(tempfile.gettempdir()) / "gradio"))
+def run_zoom(image, center, model, layers, iterations, step_size, octaves,
+             duration, fps, zoom, max_dim, progress=gr.Progress()):
+    if image is None:
+        raise gr.Error("Escolha uma imagem.")
+
+    def report(index, total):
+        progress(index / total, desc=f"Quadro {index}/{total}")
+
+    try:
+        return video_module.zoom_video(
+            image, output_path("-zoom.mp4"), center=center or (0.5, 0.5),
+            duration=duration, fps=int(fps), zoom=zoom, layers=layers,
+            model=model, iterations=int(iterations), step_size=step_size,
+            octaves=int(octaves), max_dim=int(max_dim),
+            device=current_device(), on_frame=report,
+        )
+    except RuntimeError as error:
+        raise gr.Error(str(error))
 
 
 def _folder_size(folder):
@@ -237,10 +266,8 @@ def cache_usage():
     ours_count, ours_size = _folder_size(OUTPUT_DIR)
     gradio_count, gradio_size = _folder_size(GRADIO_CACHE)
     return (
-        f"**Saídas geradas:** {ours_count} arquivos, {_human(ours_size)} — "
-        f"`{OUTPUT_DIR}`<br>"
-        f"**Cache do Gradio:** {gradio_count} arquivos, {_human(gradio_size)} — "
-        f"`{GRADIO_CACHE}`"
+        f"O que você gerou — {ours_count} arquivos, {_human(ours_size)}<br>"
+        f"Cache de uploads — {gradio_count} arquivos, {_human(gradio_size)}"
     )
 
 
@@ -248,9 +275,7 @@ def clear_cache(include_gradio):
     """Apaga as saídas geradas. Nunca toca nos pesos dos modelos em ~/.cache/torch,
     porque apagá-los só forçaria baixar tudo de novo."""
     freed = 0
-    folders = [OUTPUT_DIR] + ([GRADIO_CACHE] if include_gradio else [])
-
-    for folder in folders:
+    for folder in [OUTPUT_DIR] + ([GRADIO_CACHE] if include_gradio else []):
         if not folder.exists():
             continue
         for item in folder.rglob("*"):
@@ -261,297 +286,200 @@ def clear_cache(include_gradio):
                 except OSError:
                     pass
 
-    gr.Info(f"Liberado: {_human(freed)}")
+    gr.Info(f"{_human(freed)} liberados.")
     return cache_usage()
 
 
-def mark_center(image, evt: gr.SelectData):
-    """Desenha uma mira no ponto clicado e devolve o centro normalizado."""
-    if image is None:
-        return None, (0.5, 0.5), "Centro: meio da imagem"
-
-    x, y = evt.index
-    center = (x / image.width, y / image.height)
-
-    marked = image.convert("RGB").copy()
-    draw = ImageDraw.Draw(marked)
-    radius = max(8, min(marked.width, marked.height) // 40)
-    for width, color in ((4, "black"), (2, "white")):
-        draw.ellipse([x - radius, y - radius, x + radius, y + radius],
-                     outline=color, width=width)
-        draw.line([x - radius * 2, y, x + radius * 2, y], fill=color, width=width)
-        draw.line([x, y - radius * 2, x, y + radius * 2], fill=color, width=width)
-
-    return marked, center, f"Centro: {center[0]:.0%} × {center[1]:.0%}"
-
-
-def run_zoom(
-    image, center, model, layers, iterations, step_size, octaves,
-    duration, fps, zoom, max_dim, progress=gr.Progress(),
-):
-    if image is None:
-        raise gr.Error("Escolha uma imagem.")
-
-    def report(index, total):
-        progress(index / total, desc=f"Quadro {index}/{total}")
-
-    output = output_path("-zoom.mp4")
-    try:
-        return video_module.zoom_video(
-            image, output,
-            center=center or (0.5, 0.5),
-            duration=duration,
-            fps=int(fps),
-            zoom=zoom,
-            layers=layers,
-            model=model.split(" — ")[0],
-            iterations=int(iterations),
-            step_size=step_size,
-            octaves=int(octaves),
-            max_dim=int(max_dim),
-            device=current_device(),
-            on_frame=report,
-        )
-    except RuntimeError as error:
-        raise gr.Error(str(error))
-
+# ---------------------------------------------------------------- interface
 
 with gr.Blocks(title="Dream Canvas") as demo:
-    gr.Markdown(
-        f"# Dream Canvas\n"
-        f"Reprodução do DeepDream original do Google (2015), com os pesos "
-        f"`bvlc_googlenet` do Caffe. Rodando em "
-        f"`{'ZeroGPU' if ZEROGPU else _startup_device.type}`."
-    )
-    gr.Markdown(
-        f"<sub>As saídas ficam em <code>{OUTPUT_DIR}</code> e são apagadas "
-        f"depois de {int(OUTPUT_MAX_AGE / 3600)} h. Baixe o que quiser guardar.</sub>"
-    )
+    with gr.Column(elem_id="dc-header"):
+        gr.HTML(
+            "<h1>Dream Canvas</h1>"
+            f"<p>O DeepDream original do Google, de 2015, rodando na sua máquina "
+            f"em <code>{'ZeroGPU' if ZEROGPU else _startup_device.type}</code>.</p>"
+        )
 
     with gr.Tab("Imagem"):
         with gr.Row():
-            with gr.Column(scale=2):
-                image = gr.Image(type="pil", label="Imagem", height=320)
-                if VIDEO_OK:
-                    gr.Markdown(
-                        "<sub>Só imagem aqui. Para vídeo, use a aba "
-                        "**Vídeo** acima.</sub>"
-                    )
-                preset = gr.Radio(
-                    choices=list(PRESETS), value="Clássico 2015", label="Preset"
-                )
+            with gr.Column(scale=2, elem_classes="dc-rail"):
+                image = gr.Image(type="pil", label="Sua imagem", height=260)
+                preset = gr.Radio(list(PRESETS), value="Clássico 2015",
+                                  label="Estilo", elem_classes="dc-preset")
                 run_button = gr.Button("Sonhar", variant="primary", size="lg")
 
-                with gr.Accordion("Ajustes", open=False):
-                    model = gr.Dropdown(
-                        choices=[MODEL_LABELS[name] for name in MODELS],
-                        value=MODEL_LABELS[DEFAULT_MODEL], label="Modelo",
-                    )
-                    layers = gr.CheckboxGroup(
-                        choices=LAYER_CHOICES, value=["inception_4c/output"], label="Camadas",
-                    )
+                with gr.Accordion("Ajuste fino", open=False):
+                    model = gr.Dropdown(MODEL_CHOICES, value=DEFAULT_MODEL, label="Modelo")
+                    layers = gr.CheckboxGroup(LAYER_CHOICES, value=["inception_4c/output"],
+                                              label="Camadas")
                     iterations = gr.Slider(1, 100, value=DEFAULT_ITERATIONS, step=1,
-                                           label="Iterações por octave")
+                                           label="Iterações",
+                                           info="Mais formas, mais tempo.")
                     step_size = gr.Slider(0.1, 6.0, value=DEFAULT_STEP_SIZE, step=0.1,
-                                          label="Tamanho do passo")
-                    octaves = gr.Slider(1, 8, value=DEFAULT_OCTAVES, step=1, label="Octaves")
+                                          label="Força",
+                                          info="Quanto cada iteração empurra a imagem.")
+                    octaves = gr.Slider(1, 8, value=DEFAULT_OCTAVES, step=1,
+                                        label="Escalas",
+                                        info="Em quantos tamanhos o efeito é aplicado.")
                     octave_scale = gr.Slider(1.1, 2.0, value=DEFAULT_OCTAVE_SCALE, step=0.05,
-                                             label="Escala por octave")
-                    jitter = gr.Slider(0, 64, value=DEFAULT_JITTER, step=1, label="Jitter")
-                    max_dim = gr.Slider(256, MAX_DIM_CAP, value=min(1024, MAX_DIM_CAP), step=128,
-                                        label="Dimensão máxima")
-                    objective = gr.Radio(["l2", "mean"], value="l2", label="Objetivo",
-                                         info="l2 é o do notebook original.")
-                    seed = gr.Number(value=None, label="Seed", precision=0,
-                                     info="Só é reprodutível de fato em CPU.")
-
-                with gr.Accordion("Guia de camadas", open=False):
-                    gr.Markdown(LAYER_GUIDE)
+                                             label="Salto entre escalas")
+                    jitter = gr.Slider(0, 64, value=DEFAULT_JITTER, step=1,
+                                       label="Tremor",
+                                       info="Desloca a imagem a cada passo. Evita emendas.")
+                    max_dim = gr.Slider(256, MAX_DIM_CAP, value=min(1024, MAX_DIM_CAP),
+                                        step=128, label="Resolução")
+                    mode = gr.Radio(MODE_CHOICES, value="l2", label="Modo",
+                                    info="Clássico é a receita de 2015.")
+                    seed = gr.Number(value=None, label="Semente", precision=0,
+                                     info="Repete o mesmo resultado. Exato só em CPU.")
 
             with gr.Column(scale=3):
-                comparison = gr.ImageSlider(label="Antes / depois", height=520)
+                with gr.Column(elem_classes="dc-stage"):
+                    comparison = gr.ImageSlider(label="Antes e depois", height=520)
                 download = gr.File(label="Baixar PNG")
 
+        with gr.Accordion("O que cada camada faz", open=False):
+            gr.Markdown(LAYER_GUIDE, elem_classes="dc-reading")
+
         if os.path.exists("exemplo.jpg"):
-            gr.Examples(examples=[["exemplo.jpg"]], inputs=[image], label="Exemplo")
+            gr.Examples([["exemplo.jpg"]], inputs=[image], label="Experimente com esta")
 
     if VIDEO_OK:
         with gr.Tab("Vídeo"):
-            gr.Markdown(
-                "Cada quadro sonhado realimenta o próximo, deformado pelo fluxo "
-                "óptico — sem isso o vídeo pisca violentamente. Conte com uns "
-                "**0,7 s por quadro** a 640px; comece recortando poucos segundos."
-            )
             with gr.Row():
-                with gr.Column(scale=2):
-                    video_in = gr.Video(label="Vídeo", height=320)
-                    video_preset = gr.Radio(
-                        choices=list(PRESETS), value="Clássico 2015", label="Preset"
-                    )
-                    video_button = gr.Button("Sonhar o vídeo", variant="primary", size="lg")
-
+                with gr.Column(scale=2, elem_classes="dc-rail"):
+                    video_in = gr.Video(label="Seu vídeo", height=260)
+                    video_preset = gr.Radio(list(PRESETS), value="Clássico 2015",
+                                            label="Estilo", elem_classes="dc-preset")
                     with gr.Row():
-                        video_start = gr.Number(value=0, label="Início (s)", precision=1)
-                        video_duration = gr.Number(value=3, label="Duração (s)", precision=1,
-                                                   info="0 processa até o fim.")
+                        video_start = gr.Number(value=0, label="Começa em (s)", precision=1)
+                        video_duration = gr.Number(value=3, label="Dura (s)", precision=1)
+                    gr.Markdown("Cerca de 0,7 s de processamento por quadro. "
+                                "Três segundos de vídeo levam perto de um minuto.",
+                                elem_classes="dc-hint")
+                    video_button = gr.Button("Sonhar", variant="primary", size="lg")
 
-                    with gr.Accordion("Ajustes", open=False):
-                        video_model = gr.Dropdown(
-                            choices=[MODEL_LABELS[name] for name in MODELS],
-                            value=MODEL_LABELS[DEFAULT_MODEL], label="Modelo",
-                        )
-                        video_layers = gr.CheckboxGroup(
-                            choices=LAYER_CHOICES, value=["inception_4c/output"],
-                            label="Camadas",
-                        )
+                    with gr.Accordion("Ajuste fino", open=False):
+                        video_model = gr.Dropdown(MODEL_CHOICES, value=DEFAULT_MODEL,
+                                                  label="Modelo")
+                        video_layers = gr.CheckboxGroup(LAYER_CHOICES,
+                                                        value=["inception_4c/output"],
+                                                        label="Camadas")
                         video_iterations = gr.Slider(
                             1, 40, value=video_module.DEFAULT_ITERATIONS, step=1,
-                            label="Iterações por quadro",
-                        )
+                            label="Iterações por quadro")
                         video_step = gr.Slider(0.1, 6.0, value=DEFAULT_STEP_SIZE, step=0.1,
-                                               label="Tamanho do passo")
+                                               label="Força")
                         video_octaves = gr.Slider(
-                            1, 6, value=video_module.DEFAULT_OCTAVES, step=1, label="Octaves",
-                        )
+                            1, 6, value=video_module.DEFAULT_OCTAVES, step=1, label="Escalas")
                         video_blend = gr.Slider(
                             0.0, 0.95, value=video_module.DEFAULT_BLEND, step=0.05,
-                            label="Realimentação",
-                            info="Quanto do quadro anterior volta. Mais alto: "
-                                 "mais estável, mais rastro.",
-                        )
-                        video_max_dim = gr.Slider(
-                            256, 1280, value=video_module.DEFAULT_MAX_DIM, step=64,
-                            label="Dimensão máxima",
-                        )
+                            label="Memória entre quadros",
+                            info="Mais alto: mais estável, mais rastro.")
+                        video_max_dim = gr.Slider(256, 1280,
+                                                  value=video_module.DEFAULT_MAX_DIM,
+                                                  step=64, label="Resolução")
                         video_flow = gr.Checkbox(
-                            value=True, label="Fluxo óptico",
-                            info="Desligar acelera, mas o padrão descola do movimento.",
-                        )
+                            value=True, label="Acompanhar o movimento",
+                            info="Desligar acelera, mas o padrão descola da cena.")
 
-                with gr.Column(scale=3):
+                with gr.Column(scale=3, elem_classes="dc-stage"):
                     video_out = gr.Video(label="Resultado", height=520)
 
-            video_preset.change(
-                apply_video_preset, inputs=[video_preset],
-                outputs=[video_model, video_layers, video_step],
-            )
-            video_button.click(
-                run_video,
-                inputs=[video_in, video_model, video_layers, video_iterations,
-                        video_step, video_octaves, video_blend, video_max_dim,
-                        video_flow, video_start, video_duration],
-                outputs=video_out,
-            )
-
-    if VIDEO_OK:
-        with gr.Tab("Zoom infinito"):
-            gr.Markdown(
-                "Sonha um quadro, aproxima um pouco em direção ao ponto escolhido, "
-                "repete — detalhe novo nasce no centro sem parar. "
-                "**Clique na imagem** para escolher para onde o zoom vai."
-            )
+        with gr.Tab("Zoom"):
             with gr.Row():
-                with gr.Column(scale=2):
-                    zoom_image = gr.Image(type="pil", label="Imagem (clique para mirar)",
-                                          height=300)
+                with gr.Column(scale=2, elem_classes="dc-rail"):
+                    zoom_image = gr.Image(type="pil", label="Sua imagem", height=240)
                     zoom_center = gr.State((0.5, 0.5))
-                    zoom_center_label = gr.Markdown("Centro: meio da imagem")
-                    zoom_marked = gr.Image(label="Ponto escolhido", height=220,
-                                           interactive=False)
-
-                    zoom_preset = gr.Radio(
-                        choices=list(PRESETS), value="Clássico 2015", label="Preset"
-                    )
+                    zoom_center_label = gr.Markdown(
+                        "Clique na imagem para escolher o destino do zoom.",
+                        elem_classes="dc-hint")
+                    zoom_preset = gr.Radio(list(PRESETS), value="Clássico 2015",
+                                           label="Estilo", elem_classes="dc-preset")
                     zoom_duration = gr.Slider(1, 30, value=5, step=1, label="Duração (s)")
                     zoom_speed = gr.Slider(
                         0.005, 0.08, value=video_module.DEFAULT_ZOOM, step=0.005,
-                        label="Velocidade do zoom",
-                        info="Quanto a imagem avança por quadro.",
-                    )
-                    zoom_button = gr.Button("Gerar zoom", variant="primary", size="lg")
+                        label="Velocidade",
+                        info="Lento hipnotiza; rápido não dá tempo das criaturas se formarem.")
+                    gr.Markdown("Cerca de 0,4 s por quadro. "
+                                "Cinco segundos levam perto de 40 s.",
+                                elem_classes="dc-hint")
+                    zoom_button = gr.Button("Sonhar", variant="primary", size="lg")
 
-                    with gr.Accordion("Ajustes", open=False):
-                        zoom_model = gr.Dropdown(
-                            choices=[MODEL_LABELS[name] for name in MODELS],
-                            value=MODEL_LABELS[DEFAULT_MODEL], label="Modelo",
-                        )
-                        zoom_layers = gr.CheckboxGroup(
-                            choices=LAYER_CHOICES, value=["inception_4c/output"],
-                            label="Camadas",
-                        )
+                    with gr.Accordion("Ajuste fino", open=False):
+                        zoom_model = gr.Dropdown(MODEL_CHOICES, value=DEFAULT_MODEL,
+                                                 label="Modelo")
+                        zoom_layers = gr.CheckboxGroup(LAYER_CHOICES,
+                                                       value=["inception_4c/output"],
+                                                       label="Camadas")
                         zoom_iterations = gr.Slider(
                             1, 40, value=video_module.DEFAULT_ITERATIONS, step=1,
-                            label="Iterações por quadro",
-                        )
+                            label="Iterações por quadro")
                         zoom_step = gr.Slider(0.1, 6.0, value=DEFAULT_STEP_SIZE, step=0.1,
-                                              label="Tamanho do passo")
+                                              label="Força")
                         zoom_octaves = gr.Slider(
-                            1, 6, value=video_module.DEFAULT_OCTAVES, step=1,
-                            label="Octaves",
-                        )
-                        zoom_fps = gr.Slider(
-                            10, 30, value=video_module.DEFAULT_ZOOM_FPS, step=1, label="FPS",
-                        )
-                        zoom_max_dim = gr.Slider(
-                            256, 1024, value=512, step=64, label="Dimensão máxima",
-                        )
+                            1, 6, value=video_module.DEFAULT_OCTAVES, step=1, label="Escalas")
+                        zoom_fps = gr.Slider(10, 30, value=video_module.DEFAULT_ZOOM_FPS,
+                                             step=1, label="Quadros por segundo")
+                        zoom_max_dim = gr.Slider(256, 1024, value=512, step=64,
+                                                 label="Resolução")
 
                 with gr.Column(scale=3):
-                    zoom_out = gr.Video(label="Resultado", height=520)
-                    gr.Markdown(
-                        "<sub>Conte ~0,4 s por quadro a 512px. 5 s a 20 fps são "
-                        "100 quadros, ou seja, cerca de 40 s de espera.</sub>"
-                    )
+                    with gr.Column(elem_classes="dc-stage"):
+                        zoom_out = gr.Video(label="Resultado", height=380)
+                    zoom_marked = gr.Image(label="Onde o zoom vai chegar", height=200,
+                                           interactive=False)
 
-            zoom_preset.change(
-                apply_video_preset, inputs=[zoom_preset],
-                outputs=[zoom_model, zoom_layers, zoom_step],
-            )
-            zoom_image.select(
-                mark_center, inputs=[zoom_image],
-                outputs=[zoom_marked, zoom_center, zoom_center_label],
-            )
-            zoom_button.click(
-                run_zoom,
-                inputs=[zoom_image, zoom_center, zoom_model, zoom_layers,
-                        zoom_iterations, zoom_step, zoom_octaves, zoom_duration,
-                        zoom_fps, zoom_speed, zoom_max_dim],
-                outputs=zoom_out,
-            )
-
-    with gr.Accordion("Manutenção", open=False):
-        usage = gr.Markdown(cache_usage())
-        include_gradio = gr.Checkbox(
-            value=False, label="Incluir o cache do Gradio",
-            info="Também apaga uploads e miniaturas. Resultados já exibidos "
-                 "na tela podem deixar de carregar até você gerar de novo.",
-        )
-        with gr.Row():
-            refresh_button = gr.Button("Atualizar", size="sm")
-            clear_button = gr.Button("Limpar cache", variant="stop", size="sm")
+    with gr.Accordion("Arquivos e espaço", open=False):
+        usage = gr.Markdown(cache_usage(), elem_classes="dc-hint")
         gr.Markdown(
-            "<sub>Os pesos dos modelos (`~/.cache/torch`) nunca são apagados — "
-            "removê-los só forçaria baixar tudo outra vez.</sub>"
-        )
+            f"Tudo que você gera fica em `{OUTPUT_DIR}` e some depois de "
+            f"{int(OUTPUT_MAX_AGE / 3600)} h. Baixe o que quiser guardar. "
+            f"Os modelos baixados nunca são apagados — removê-los só faria "
+            f"você esperar o download de novo.",
+            elem_classes="dc-hint")
+        include_gradio = gr.Checkbox(
+            value=False, label="Apagar também o cache de uploads",
+            info="Resultados já na tela podem parar de carregar.")
+        with gr.Row():
+            refresh_button = gr.Button("Recontar", size="sm")
+            clear_button = gr.Button("Apagar", variant="stop", size="sm")
 
-        refresh_button.click(cache_usage, outputs=usage)
-        clear_button.click(clear_cache, inputs=[include_gradio], outputs=usage)
+    # ------------------------------------------------------------ ligações
+    preset.change(apply_preset, [preset],
+                  [model, layers, iterations, step_size, octaves, octave_scale])
+    run_button.click(run,
+                     [image, model, layers, iterations, step_size, octaves,
+                      octave_scale, jitter, max_dim, mode, seed],
+                     [comparison, download])
 
-    preset.change(
-        apply_preset, inputs=[preset],
-        outputs=[model, layers, iterations, step_size, octaves, octave_scale],
-    )
-    run_button.click(
-        run,
-        inputs=[image, model, layers, iterations, step_size, octaves, octave_scale,
-                jitter, max_dim, objective, seed],
-        outputs=[comparison, download],
-    )
+    if VIDEO_OK:
+        video_preset.change(apply_motion_preset, [video_preset],
+                            [video_model, video_layers, video_step])
+        video_button.click(run_video,
+                           [video_in, video_model, video_layers, video_iterations,
+                            video_step, video_octaves, video_blend, video_max_dim,
+                            video_flow, video_start, video_duration],
+                           video_out)
+
+        zoom_preset.change(apply_motion_preset, [zoom_preset],
+                           [zoom_model, zoom_layers, zoom_step])
+        zoom_image.select(mark_center, [zoom_image],
+                          [zoom_marked, zoom_center, zoom_center_label])
+        zoom_button.click(run_zoom,
+                          [zoom_image, zoom_center, zoom_model, zoom_layers,
+                           zoom_iterations, zoom_step, zoom_octaves, zoom_duration,
+                           zoom_fps, zoom_speed, zoom_max_dim],
+                          zoom_out)
+
+    refresh_button.click(cache_usage, outputs=usage)
+    clear_button.click(clear_cache, [include_gradio], usage)
 
 
 if __name__ == "__main__":
     demo.queue(default_concurrency_limit=1).launch(
-        theme=gr.themes.Soft(),
+        theme=dc_theme.build_theme(),
+        css=dc_theme.CSS,
         server_name="0.0.0.0",
         server_port=int(os.environ.get("PORT", 7860)),
         share=os.environ.get("DEEPDREAM_SHARE") == "1",

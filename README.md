@@ -13,6 +13,10 @@ short_description: DeepDream clássico do Google (2015) com os pesos bvlc_google
 
 # Dream Canvas
 
+O design system está em [DESIGN.md](DESIGN.md) e a implementação em Gradio, em
+[theme.py](theme.py). O DESIGN.md é a fonte: mexa nele antes de mexer nos tokens.
+
+
 Reprodução do DeepDream original do Google (Mordvintsev, 2015) em PyTorch, com
 os pesos `bvlc_googlenet` do Caffe — não o InceptionV3 do tutorial em TensorFlow.
 É esse modelo que produz as "puppy slugs" clássicas.
