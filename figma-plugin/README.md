@@ -20,6 +20,16 @@ rodando na sua máquina e insere o resultado de volta no documento.
 O resultado entra como um retângulo novo ao lado do original, com a imagem como
 preenchimento. Nada é sobrescrito.
 
+## Tamanho da saída
+
+Por padrão a imagem é reduzida para 1024px no maior lado. Marque **Manter o
+tamanho original da camada** para desligar o teto — uma base 1920×1080 sai
+1920×1080, levando ~11s em vez de ~4s.
+
+O plugin exporta a camada em 1x, então o "tamanho original" é o tamanho do nó
+no Figma, não o da imagem que você importou. Uma foto de 4000px colocada num
+frame de 800px é exportada com 800px.
+
 ## Detalhes que custaram caro
 
 **O manifesto não aceita IP numérico.** `http://127.0.0.1:8000` é recusado com

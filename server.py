@@ -57,7 +57,7 @@ class DreamRequest(BaseModel):
     octaves: int = DEFAULT_OCTAVES
     octave_scale: float = DEFAULT_OCTAVE_SCALE
     jitter: int = DEFAULT_JITTER
-    max_dim: int = 1024
+    max_dim: int | None = 1024  # 0 ou null preserva o tamanho original
     objective: str = "l2"
     seed: int | None = None
 
@@ -93,7 +93,7 @@ def post_dream(request: DreamRequest):
             octaves=request.octaves,
             octave_scale=request.octave_scale,
             jitter=request.jitter,
-            max_dim=request.max_dim,
+            max_dim=request.max_dim or None,
             objective=request.objective,
             seed=request.seed,
             device=DEVICE,
