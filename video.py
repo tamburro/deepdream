@@ -113,25 +113,48 @@ def warp(image, previous_gray, current_gray):
     )
 
 
-def run(args):
+def process(
+    source,
+    output,
+    layers=(DEFAULT_LAYER,),
+    model=DEFAULT_MODEL,
+    iterations=DEFAULT_ITERATIONS,
+    step_size=DEFAULT_STEP_SIZE,
+    octaves=DEFAULT_OCTAVES,
+    octave_scale=DEFAULT_OCTAVE_SCALE,
+    jitter=DEFAULT_JITTER,
+    objective="l2",
+    seed=0,
+    device=None,
+    max_dim=DEFAULT_MAX_DIM,
+    fps=None,
+    start=None,
+    duration=None,
+    blend=DEFAULT_BLEND,
+    flow=True,
+    audio=True,
+    on_frame=None,
+    verbose=False,
+):
+    """Aplica DeepDream a um vídeo inteiro. Devolve o caminho de saída."""
     if not shutil.which("ffmpeg"):
-        sys.exit("ffmpeg não encontrado. Instale com: brew install ffmpeg")
+        raise RuntimeError("ffmpeg não encontrado. Instale com: brew install ffmpeg")
 
-    info = probe(args.input)
-    size = output_size(info["width"], info["height"], args.max_dim)
-    fps = args.fps or info["fps"]
+    info = probe(source)
+    size = output_size(info["width"], info["height"], max_dim)
+    fps = fps or info["fps"]
     frame_bytes = size[0] * size[1] * 3
 
-    span = args.duration or max(0.0, info["duration"] - (args.start or 0))
+    span = duration or max(0.0, info["duration"] - (start or 0))
     expected = int(span * info["fps"]) if span else 0
 
-    print(f"{info['width']}x{info['height']} @ {info['fps']:.2f}fps "
-          f"-> {size[0]}x{size[1]} @ {fps:.2f}fps"
-          + (f", ~{expected} quadros" if expected else ""))
+    if verbose:
+        print(f"{info['width']}x{info['height']} @ {info['fps']:.2f}fps "
+              f"-> {size[0]}x{size[1]} @ {fps:.2f}fps"
+              + (f", ~{expected} quadros" if expected else ""))
 
-    read = decoder(args.input, size, args.start, args.duration)
-    write = encoder(args.output, size, fps, args.input, info["has_audio"] and not args.no_audio,
-                    args.start, args.duration)
+    read = decoder(source, size, start, duration)
+    write = encoder(output, size, fps, source, info["has_audio"] and audio, start, duration)
 
     previous_dream = None
     previous_gray = None
@@ -149,25 +172,25 @@ def run(args):
 
             if previous_dream is not None:
                 carried = previous_dream.astype(np.float32)
-                if not args.no_flow:
+                if flow:
                     carried = warp(carried, previous_gray, gray)
-                base = (1 - args.blend) * base + args.blend * carried
+                base = (1 - blend) * base + blend * carried
 
             dreamed = dream(
                 Image.fromarray(np.clip(base, 0, 255).astype(np.uint8)),
-                layers=args.layers,
-                model=args.model,
-                iterations=args.iterations,
-                step_size=args.step_size,
-                octaves=args.octaves,
-                octave_scale=args.octave_scale,
-                jitter=args.jitter,
+                layers=layers,
+                model=model,
+                iterations=iterations,
+                step_size=step_size,
+                octaves=octaves,
+                octave_scale=octave_scale,
+                jitter=jitter,
                 max_dim=None,
-                objective=args.objective,
+                objective=objective,
                 # A mesma seed em todo quadro mantém o padrão de jitter idêntico,
                 # o que reduz bastante o flicker residual.
-                seed=args.seed,
-                device=args.device,
+                seed=seed,
+                device=device,
             )
 
             previous_dream = np.array(dreamed)
@@ -175,18 +198,24 @@ def run(args):
             write.stdin.write(previous_dream.tobytes())
 
             index += 1
-            suffix = f"/{expected}" if expected else ""
-            print(f"\rQuadro {index}{suffix}", end="", flush=True)
+            if on_frame:
+                on_frame(index, expected)
+            if verbose:
+                suffix = f"/{expected}" if expected else ""
+                print(f"\rQuadro {index}{suffix}", end="", flush=True)
     finally:
-        print()
+        if verbose:
+            print()
         read.stdout.close()
         read.wait()
         write.stdin.close()
         write.wait()
 
     if index == 0:
-        sys.exit("Nenhum quadro foi lido. O arquivo de entrada é um vídeo válido?")
-    print(f"Salvo em {args.output} ({index} quadros)")
+        raise RuntimeError("Nenhum quadro foi lido. O arquivo de entrada é um vídeo válido?")
+    if verbose:
+        print(f"Salvo em {output} ({index} quadros)")
+    return output
 
 
 def main():
@@ -217,11 +246,32 @@ def main():
     parser.add_argument("--no-audio", action="store_true")
     args = parser.parse_args()
 
-    args.layers = [s for s in args.layers.split(",") if s.strip()]
-    if args.output is None:
-        args.output = args.input.with_name(f"{args.input.stem}_dream.mp4")
+    output = args.output or args.input.with_name(f"{args.input.stem}_dream.mp4")
 
-    run(args)
+    try:
+        process(
+            args.input, output,
+            layers=[s for s in args.layers.split(",") if s.strip()],
+            model=args.model,
+            iterations=args.iterations,
+            step_size=args.step_size,
+            octaves=args.octaves,
+            octave_scale=args.octave_scale,
+            jitter=args.jitter,
+            objective=args.objective,
+            seed=args.seed,
+            device=args.device,
+            max_dim=args.max_dim,
+            fps=args.fps,
+            start=args.start,
+            duration=args.duration,
+            blend=args.blend,
+            flow=not args.no_flow,
+            audio=not args.no_audio,
+            verbose=True,
+        )
+    except RuntimeError as error:
+        sys.exit(str(error))
 
 
 if __name__ == "__main__":

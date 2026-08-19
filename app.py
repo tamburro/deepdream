@@ -8,6 +8,7 @@ Roda local (`python app.py`) ou hospedado. Configuração por variáveis de ambi
 """
 
 import os
+import shutil
 import tempfile
 
 # No ZeroGPU o pacote spaces precisa ser importado antes do torch. Fora dele,
@@ -26,6 +27,13 @@ except ImportError:
 
 import gradio as gr
 
+try:
+    import video as video_module
+
+    VIDEO_OK = not ZEROGPU and shutil.which("ffmpeg") is not None
+except ImportError:
+    video_module = None
+    VIDEO_OK = False
 from deepdream import (
     DEFAULT_ITERATIONS,
     DEFAULT_JITTER,
@@ -137,6 +145,45 @@ def run(
     return (image, result), path
 
 
+def run_video(
+    path, model, layers, iterations, step_size, octaves, blend,
+    max_dim, use_flow, start, duration, progress=gr.Progress(),
+):
+    if not path:
+        raise gr.Error("Escolha um vídeo.")
+
+    def report(index, total):
+        if total:
+            progress(index / total, desc=f"Quadro {index}/{total}")
+        else:
+            progress(0, desc=f"Quadro {index}")
+
+    output = os.path.join(tempfile.mkdtemp(), "deepdream.mp4")
+    try:
+        return video_module.process(
+            path, output,
+            layers=layers,
+            model=model.split(" — ")[0],
+            iterations=int(iterations),
+            step_size=step_size,
+            octaves=int(octaves),
+            max_dim=int(max_dim),
+            blend=blend,
+            flow=use_flow,
+            start=start or None,
+            duration=duration or None,
+            device=current_device(),
+            on_frame=report,
+        )
+    except RuntimeError as error:
+        raise gr.Error(str(error))
+
+
+def apply_video_preset(name):
+    p = PRESETS[name]
+    return MODEL_LABELS[p["model"]], p["layers"], p["step_size"]
+
+
 with gr.Blocks(title="DeepDream") as demo:
     gr.Markdown(
         f"# DeepDream clássico\n"
@@ -145,46 +192,115 @@ with gr.Blocks(title="DeepDream") as demo:
         f"`{'ZeroGPU' if ZEROGPU else _startup_device.type}`."
     )
 
-    with gr.Row():
-        with gr.Column(scale=2):
-            image = gr.Image(type="pil", label="Imagem", height=320)
-            preset = gr.Radio(
-                choices=list(PRESETS), value="Clássico 2015", label="Preset"
+    with gr.Tab("Imagem"):
+        with gr.Row():
+            with gr.Column(scale=2):
+                image = gr.Image(type="pil", label="Imagem", height=320)
+                preset = gr.Radio(
+                    choices=list(PRESETS), value="Clássico 2015", label="Preset"
+                )
+                run_button = gr.Button("Sonhar", variant="primary", size="lg")
+
+                with gr.Accordion("Ajustes", open=False):
+                    model = gr.Dropdown(
+                        choices=[MODEL_LABELS[name] for name in MODELS],
+                        value=MODEL_LABELS[DEFAULT_MODEL], label="Modelo",
+                    )
+                    layers = gr.CheckboxGroup(
+                        choices=LAYER_CHOICES, value=["inception_4c/output"], label="Camadas",
+                    )
+                    iterations = gr.Slider(1, 100, value=DEFAULT_ITERATIONS, step=1,
+                                           label="Iterações por octave")
+                    step_size = gr.Slider(0.1, 6.0, value=DEFAULT_STEP_SIZE, step=0.1,
+                                          label="Tamanho do passo")
+                    octaves = gr.Slider(1, 8, value=DEFAULT_OCTAVES, step=1, label="Octaves")
+                    octave_scale = gr.Slider(1.1, 2.0, value=DEFAULT_OCTAVE_SCALE, step=0.05,
+                                             label="Escala por octave")
+                    jitter = gr.Slider(0, 64, value=DEFAULT_JITTER, step=1, label="Jitter")
+                    max_dim = gr.Slider(256, MAX_DIM_CAP, value=min(1024, MAX_DIM_CAP), step=128,
+                                        label="Dimensão máxima")
+                    objective = gr.Radio(["l2", "mean"], value="l2", label="Objetivo",
+                                         info="l2 é o do notebook original.")
+                    seed = gr.Number(value=None, label="Seed", precision=0,
+                                     info="Só é reprodutível de fato em CPU.")
+
+                with gr.Accordion("Guia de camadas", open=False):
+                    gr.Markdown(LAYER_GUIDE)
+
+            with gr.Column(scale=3):
+                comparison = gr.ImageSlider(label="Antes / depois", height=520)
+                download = gr.File(label="Baixar PNG")
+
+        if os.path.exists("exemplo.jpg"):
+            gr.Examples(examples=[["exemplo.jpg"]], inputs=[image], label="Exemplo")
+
+    if VIDEO_OK:
+        with gr.Tab("Vídeo"):
+            gr.Markdown(
+                "Cada quadro sonhado realimenta o próximo, deformado pelo fluxo "
+                "óptico — sem isso o vídeo pisca violentamente. Conte com uns "
+                "**0,7 s por quadro** a 640px; comece recortando poucos segundos."
             )
-            run_button = gr.Button("Sonhar", variant="primary", size="lg")
+            with gr.Row():
+                with gr.Column(scale=2):
+                    video_in = gr.Video(label="Vídeo", height=320)
+                    video_preset = gr.Radio(
+                        choices=list(PRESETS), value="Clássico 2015", label="Preset"
+                    )
+                    video_button = gr.Button("Sonhar o vídeo", variant="primary", size="lg")
 
-            with gr.Accordion("Ajustes", open=False):
-                model = gr.Dropdown(
-                    choices=[MODEL_LABELS[name] for name in MODELS],
-                    value=MODEL_LABELS[DEFAULT_MODEL], label="Modelo",
-                )
-                layers = gr.CheckboxGroup(
-                    choices=LAYER_CHOICES, value=["inception_4c/output"], label="Camadas",
-                )
-                iterations = gr.Slider(1, 100, value=DEFAULT_ITERATIONS, step=1,
-                                       label="Iterações por octave")
-                step_size = gr.Slider(0.1, 6.0, value=DEFAULT_STEP_SIZE, step=0.1,
-                                      label="Tamanho do passo")
-                octaves = gr.Slider(1, 8, value=DEFAULT_OCTAVES, step=1, label="Octaves")
-                octave_scale = gr.Slider(1.1, 2.0, value=DEFAULT_OCTAVE_SCALE, step=0.05,
-                                         label="Escala por octave")
-                jitter = gr.Slider(0, 64, value=DEFAULT_JITTER, step=1, label="Jitter")
-                max_dim = gr.Slider(256, MAX_DIM_CAP, value=min(1024, MAX_DIM_CAP), step=128,
-                                    label="Dimensão máxima")
-                objective = gr.Radio(["l2", "mean"], value="l2", label="Objetivo",
-                                     info="l2 é o do notebook original.")
-                seed = gr.Number(value=None, label="Seed", precision=0,
-                                 info="Só é reprodutível de fato em CPU.")
+                    with gr.Row():
+                        video_start = gr.Number(value=0, label="Início (s)", precision=1)
+                        video_duration = gr.Number(value=3, label="Duração (s)", precision=1,
+                                                   info="0 processa até o fim.")
 
-            with gr.Accordion("Guia de camadas", open=False):
-                gr.Markdown(LAYER_GUIDE)
+                    with gr.Accordion("Ajustes", open=False):
+                        video_model = gr.Dropdown(
+                            choices=[MODEL_LABELS[name] for name in MODELS],
+                            value=MODEL_LABELS[DEFAULT_MODEL], label="Modelo",
+                        )
+                        video_layers = gr.CheckboxGroup(
+                            choices=LAYER_CHOICES, value=["inception_4c/output"],
+                            label="Camadas",
+                        )
+                        video_iterations = gr.Slider(
+                            1, 40, value=video_module.DEFAULT_ITERATIONS, step=1,
+                            label="Iterações por quadro",
+                        )
+                        video_step = gr.Slider(0.1, 6.0, value=DEFAULT_STEP_SIZE, step=0.1,
+                                               label="Tamanho do passo")
+                        video_octaves = gr.Slider(
+                            1, 6, value=video_module.DEFAULT_OCTAVES, step=1, label="Octaves",
+                        )
+                        video_blend = gr.Slider(
+                            0.0, 0.95, value=video_module.DEFAULT_BLEND, step=0.05,
+                            label="Realimentação",
+                            info="Quanto do quadro anterior volta. Mais alto: "
+                                 "mais estável, mais rastro.",
+                        )
+                        video_max_dim = gr.Slider(
+                            256, 1280, value=video_module.DEFAULT_MAX_DIM, step=64,
+                            label="Dimensão máxima",
+                        )
+                        video_flow = gr.Checkbox(
+                            value=True, label="Fluxo óptico",
+                            info="Desligar acelera, mas o padrão descola do movimento.",
+                        )
 
-        with gr.Column(scale=3):
-            comparison = gr.ImageSlider(label="Antes / depois", height=520)
-            download = gr.File(label="Baixar PNG")
+                with gr.Column(scale=3):
+                    video_out = gr.Video(label="Resultado", height=520)
 
-    if os.path.exists("exemplo.jpg"):
-        gr.Examples(examples=[["exemplo.jpg"]], inputs=[image], label="Exemplo")
+            video_preset.change(
+                apply_video_preset, inputs=[video_preset],
+                outputs=[video_model, video_layers, video_step],
+            )
+            video_button.click(
+                run_video,
+                inputs=[video_in, video_model, video_layers, video_iterations,
+                        video_step, video_octaves, video_blend, video_max_dim,
+                        video_flow, video_start, video_duration],
+                outputs=video_out,
+            )
 
     preset.change(
         apply_preset, inputs=[preset],

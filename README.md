@@ -63,7 +63,9 @@ Aplica o efeito a um vídeo inteiro, com coerência temporal:
 ```
 
 Exige o `ffmpeg` no sistema (`brew install ffmpeg`). O áudio do original é
-preservado.
+preservado. A interface (`app.py` e `local.py`) ganha uma aba **Vídeo** quando
+o opencv e o ffmpeg estão disponíveis — ela não aparece no Hugging Face Spaces,
+porque um vídeo estoura o limite de duração da GPU do ZeroGPU.
 
 Sonhar cada quadro isoladamente pisca muito: o processo é caótico e dois quadros
 quase idênticos divergem por completo. Aqui o quadro sonhado anterior é deformado
