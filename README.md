@@ -175,6 +175,24 @@ video.zoom_video(Image.open("foto.jpg"), "zoom.mp4",
 `center` é normalizado (0 a 1) e `zoom` é o quanto a imagem avança por quadro.
 Conte ~0,4 s por quadro a 512px: 5 s a 20 fps são 100 quadros, cerca de 40 s.
 
+## Pulsar com uma música
+
+No zoom infinito, uma faixa de áudio pode dirigir o efeito: a energia de cada
+quadro acelera o avanço do zoom e reforça a força do passo, e o áudio entra no
+vídeo final.
+
+```bash
+.venv/bin/python video.py --help   # --audio e --reactivity valem no modo zoom
+```
+
+Na interface, no accordion **Pulsar com uma música** da aba Zoom. Sem duração
+explícita, a duração passa a ser a da faixa.
+
+A envoltória é o RMS por quadro, normalizado pelo percentil 95 em vez do máximo
+— assim um único pico não achata o resto da música. Medido num teste com batida
+a 2 Hz: a variação do movimento entre quadros sobe de 0,76 para 2,63 com
+reatividade 1,5.
+
 ## Plugin do Figma
 
 Exporta a camada selecionada, aplica o efeito e insere o resultado de volta no

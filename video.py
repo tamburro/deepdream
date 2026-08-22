@@ -71,6 +71,44 @@ def probe(path):
     }
 
 
+def audio_duration(path):
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+         "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    return float(out)
+
+
+def audio_envelope(path, fps, frames, rate=22050, smooth=3):
+    """Energia do áudio por quadro, normalizada em [0, 1].
+
+    Decodifica via ffmpeg para PCM mono e mede o RMS da janela de cada quadro.
+    Normaliza pelo percentil 95 em vez do máximo, para um único pico não
+    achatar o resto da música.
+    """
+    raw = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-f", "f32le",
+         "-ac", "1", "-ar", str(rate), "-"],
+        capture_output=True, check=True,
+    ).stdout
+    samples = np.frombuffer(raw, np.float32)
+
+    window = max(1, int(rate / fps))
+    energy = np.array([
+        float(np.sqrt(np.mean(np.square(samples[i * window : (i + 1) * window]))))
+        if (i + 1) * window <= len(samples) else 0.0
+        for i in range(frames)
+    ])
+
+    if smooth > 1:
+        kernel = np.ones(smooth) / smooth
+        energy = np.convolve(energy, kernel, mode="same")
+
+    ceiling = np.percentile(energy, 95) or 1.0
+    return np.clip(energy / ceiling, 0.0, 1.0)
+
+
 def output_size(width, height, max_dim):
     scale = min(max_dim / max(width, height), 1.0)
     # O libx264 exige dimensões pares.
@@ -104,6 +142,19 @@ def encoder(path, size, fps, source, has_audio, start, duration):
         cmd += ["-map", "0:v", "-map", "1:a", "-c:a", "aac", "-shortest"]
     cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "18", str(path)]
     return subprocess.Popen(cmd, stdin=subprocess.PIPE)
+
+
+def _write_frame(write, data):
+    """Escreve um quadro. Devolve False se o ffmpeg já fechou a entrada.
+
+    Com `-shortest` o ffmpeg encerra assim que a trilha mais curta acaba, e os
+    últimos quadros encontram o cano fechado. Isso é fim normal, não erro.
+    """
+    try:
+        write.stdin.write(data)
+        return True
+    except BrokenPipeError:
+        return False
 
 
 def warp(image, previous_gray, current_gray):
@@ -151,7 +202,7 @@ def zoom_video(
     image,
     output,
     center=(0.5, 0.5),
-    duration=5.0,
+    duration=None,
     fps=DEFAULT_ZOOM_FPS,
     zoom=DEFAULT_ZOOM,
     layers=(DEFAULT_LAYER,),
@@ -167,10 +218,17 @@ def zoom_video(
     seed=0,
     device=None,
     max_dim=DEFAULT_MAX_DIM,
+    audio=None,
+    reactivity=1.0,
     on_frame=None,
     verbose=False,
 ):
-    """Zoom infinito a partir de uma imagem. Devolve o caminho de saída."""
+    """Zoom infinito a partir de uma imagem. Devolve o caminho de saída.
+
+    Com `audio`, a velocidade do zoom e a força do passo pulsam junto com a
+    energia da faixa, e o áudio entra no vídeo final. Sem `duration`, a duração
+    passa a ser a da própria faixa.
+    """
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg não encontrado. Instale com: brew install ffmpeg")
 
@@ -186,8 +244,15 @@ def zoom_video(
     height, width = frame.shape[0] // 2 * 2, frame.shape[1] // 2 * 2
     frame = frame[:height, :width]
 
+    # Com áudio e sem duração explícita, a faixa manda.
+    if not duration:
+        duration = audio_duration(audio) if audio is not None else 5.0
+
     total = max(1, int(duration * fps))
-    write = encoder(output, (width, height), fps, None, False, None, None)
+    envelope = audio_envelope(audio, fps, total) if audio is not None else None
+
+    # O encoder já sabe puxar áudio de um arquivo de origem.
+    write = encoder(output, (width, height), fps, audio, audio is not None, None, None)
 
     if verbose:
         print(f"{width}x{height} @ {fps}fps, {total} quadros, "
@@ -195,18 +260,24 @@ def zoom_video(
 
     try:
         for index in range(total):
+            # A energia do quadro modula tanto o avanço quanto a intensidade.
+            pulse = float(envelope[index]) if envelope is not None else 0.0
+            zoom_now = zoom * (1.0 + reactivity * pulse)
+            step_now = step_size * (1.0 + 0.5 * reactivity * pulse)
+
             dreamed = np.array(dream(
                 Image.fromarray(frame),
                 layers=layers, model=model, iterations=iterations,
-                step_size=step_size, octaves=octaves, octave_scale=octave_scale,
+                step_size=step_now, octaves=octaves, octave_scale=octave_scale,
                 jitter=jitter, max_dim=None, objective=objective, guide=guides, text=text,
                 seed=seed, device=device,
             ))
-            write.stdin.write(dreamed.tobytes())
+            if not _write_frame(write, dreamed.tobytes()):
+                break
 
             # O próximo quadro parte do atual já aproximado: é isso que faz o
             # zoom parecer infinito, com detalhe novo nascendo no centro.
-            frame = zoom_step(dreamed, center, zoom)
+            frame = zoom_step(dreamed, center, zoom_now)
 
             if on_frame:
                 on_frame(index + 1, total)
@@ -215,7 +286,8 @@ def zoom_video(
     finally:
         if verbose:
             print()
-        write.stdin.close()
+        if not write.stdin.closed:
+            write.stdin.close()
         write.wait()
 
     return output
@@ -308,7 +380,8 @@ def process(
 
             previous_dream = np.array(dreamed)
             previous_gray = gray
-            write.stdin.write(previous_dream.tobytes())
+            if not _write_frame(write, previous_dream.tobytes()):
+                break
 
             index += 1
             if on_frame:
@@ -321,7 +394,8 @@ def process(
             print()
         read.stdout.close()
         read.wait()
-        write.stdin.close()
+        if not write.stdin.closed:
+            write.stdin.close()
         write.wait()
 
     if index == 0:
@@ -358,6 +432,10 @@ def main():
         help="Quanto do quadro sonhado anterior é realimentado (0 a 1). "
              "Mais alto: mais estável e com mais rastro.",
     )
+    parser.add_argument("--audio", type=Path,
+                        help="Faixa que dirige o pulso do zoom (só no modo zoom)")
+    parser.add_argument("--reactivity", type=float, default=1.0,
+                        help="Quanto o som afeta zoom e força. 0 desliga")
     parser.add_argument("--no-flow", action="store_true",
                         help="Não usar fluxo óptico (mais rápido, menos estável)")
     parser.add_argument("--no-audio", action="store_true")

@@ -269,8 +269,9 @@ def mark_center(image, evt: gr.SelectData):
     return marked, center, f"Mirando em {center[0]:.0%} × {center[1]:.0%}."
 
 
-def run_zoom(image, guide, center, model, layers, iterations, step_size, octaves,
-             duration, fps, zoom, max_dim, progress=gr.Progress()):
+def run_zoom(image, guide, audio, reactivity, center, model, layers, iterations,
+             step_size, octaves, duration, fps, zoom, max_dim,
+             progress=gr.Progress()):
     if image is None:
         raise gr.Error("Escolha uma imagem.")
 
@@ -280,7 +281,8 @@ def run_zoom(image, guide, center, model, layers, iterations, step_size, octaves
     try:
         return video_module.zoom_video(
             image, output_path("-zoom.mp4"), center=center or (0.5, 0.5),
-            duration=duration, fps=int(fps), zoom=zoom, layers=layers,
+            duration=duration or None, fps=int(fps), zoom=zoom, layers=layers,
+            audio=audio, reactivity=reactivity,
             model=model, iterations=int(iterations), step_size=step_size,
             octaves=int(octaves), max_dim=int(max_dim), guide=guide,
             device=current_device(), on_frame=report,
@@ -478,7 +480,17 @@ with gr.Blocks(title="Dream Canvas") as demo:
                         elem_classes="dc-hint")
                     zoom_preset = gr.Radio(list(PRESETS), value="Clássico 2015",
                                            label="Estilo", elem_classes="dc-preset")
-                    zoom_duration = gr.Slider(1, 30, value=5, step=1, label="Duração (s)")
+                    with gr.Accordion("Pulsar com uma música", open=False):
+                        zoom_audio = gr.Audio(type="filepath", label="Faixa")
+                        zoom_reactivity = gr.Slider(
+                            0.0, 3.0, value=1.5, step=0.1, label="Reatividade",
+                            info="Quanto o som acelera o zoom e reforça o efeito.")
+                        gr.Markdown(
+                            "Com uma faixa, a duração passa a ser a dela e o áudio "
+                            "entra no vídeo. Deixe a duração em 0 para usar a faixa inteira.",
+                            elem_classes="dc-hint")
+
+                    zoom_duration = gr.Slider(0, 30, value=5, step=1, label="Duração (s)")
                     zoom_speed = gr.Slider(
                         0.005, 0.08, value=video_module.DEFAULT_ZOOM, step=0.005,
                         label="Velocidade",
@@ -555,7 +567,8 @@ with gr.Blocks(title="Dream Canvas") as demo:
         zoom_image.select(mark_center, [zoom_image],
                           [zoom_marked, zoom_center, zoom_center_label])
         zoom_button.click(run_zoom,
-                          [zoom_image, zoom_guide, zoom_center, zoom_model, zoom_layers,
+                          [zoom_image, zoom_guide, zoom_audio, zoom_reactivity,
+                           zoom_center, zoom_model, zoom_layers,
                            zoom_iterations, zoom_step, zoom_octaves, zoom_duration,
                            zoom_fps, zoom_speed, zoom_max_dim],
                           zoom_out)

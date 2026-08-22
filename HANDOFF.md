@@ -132,6 +132,9 @@ Medido: o jitter determinístico **não** resolve a não-determinância em MPS
 - O Chrome barra chamadas de página pública para rede local: exige
   `allow_private_network=True` no CORSMiddleware. Sem isso o preflight volta 400
   com "Disallowed CORS private-network", mesmo com CORS todo liberado.
+- Com `-shortest`, o ffmpeg fecha a entrada quando a trilha mais curta acaba e
+  os últimos `write` estouram `BrokenPipeError`. É fim normal: `_write_frame`
+  trata e encerra o laço.
 - `short_description` do Space tem limite de **60 caracteres**; o push é
   rejeitado se passar.
 - No Gradio 6, `theme` e `css` vão no `launch()`, não no construtor de `Blocks`.
@@ -148,7 +151,7 @@ existe), custa zero, mas a alocação de GPU numa rota não-Gradio é incerta.
 1. **DeepDream guiado** — feito.
 2. **CLIP com texto** — sonhar em direção a uma descrição escrita.
 3. **Preset deepdream.c** — feito.
-4. **Áudio-reativo** no vídeo, só local.
+4. **Áudio-reativo** no zoom — feito.
 5. **Fine-tuning** do GoogLeNet num conjunto próprio, para dreams autorais.
 
 **Antes de monetizar:** confirmar a licença dos pesos `places365` e `places205`
