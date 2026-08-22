@@ -291,7 +291,8 @@ def dream(
 ):
     """Aplica DeepDream numa PIL.Image e devolve uma PIL.Image.
 
-    Com `guide` (outra PIL.Image), usa o objetivo guiado do notebook original:
+    Com `guide` (PIL.Image ou ativações de `guide_features`), usa o objetivo
+    guiado do notebook original:
     a imagem é empurrada na direção das características da guia em vez de
     amplificar as próprias. Nesse caso `objective` é ignorado.
     """
@@ -302,7 +303,9 @@ def dream(
     extractor = FeatureExtractor(model, layers, device)
 
     if guide is not None:
-        guides = guide_features(extractor, guide, device)
+        # Aceita PIL.Image ou ativações já calculadas — o vídeo passa as
+        # ativações prontas para não recalculá-las a cada quadro.
+        guides = guide if isinstance(guide, list) else guide_features(extractor, guide, device)
         objective_fn = lambda acts: _guided_objective(acts, guides)  # noqa: E731
     else:
         objective_fn = lambda acts: _objective(acts, objective)  # noqa: E731

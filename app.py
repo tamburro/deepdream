@@ -208,7 +208,7 @@ def run(image, guide, model, layers, iterations, step_size, octaves, octave_scal
     return (image, result), path
 
 
-def run_video(path, model, layers, iterations, step_size, octaves, blend,
+def run_video(path, guide, model, layers, iterations, step_size, octaves, blend,
               max_dim, use_flow, start, duration, progress=gr.Progress()):
     if not path:
         raise gr.Error("Escolha um vídeo.")
@@ -223,7 +223,7 @@ def run_video(path, model, layers, iterations, step_size, octaves, blend,
         return video_module.process(
             path, output_path(".mp4"), layers=layers, model=model,
             iterations=int(iterations), step_size=step_size, octaves=int(octaves),
-            max_dim=int(max_dim), blend=blend, flow=use_flow,
+            max_dim=int(max_dim), blend=blend, flow=use_flow, guide=guide,
             start=start or None, duration=duration or None,
             device=current_device(), on_frame=report,
         )
@@ -251,7 +251,7 @@ def mark_center(image, evt: gr.SelectData):
     return marked, center, f"Mirando em {center[0]:.0%} × {center[1]:.0%}."
 
 
-def run_zoom(image, center, model, layers, iterations, step_size, octaves,
+def run_zoom(image, guide, center, model, layers, iterations, step_size, octaves,
              duration, fps, zoom, max_dim, progress=gr.Progress()):
     if image is None:
         raise gr.Error("Escolha uma imagem.")
@@ -264,7 +264,7 @@ def run_zoom(image, center, model, layers, iterations, step_size, octaves,
             image, output_path("-zoom.mp4"), center=center or (0.5, 0.5),
             duration=duration, fps=int(fps), zoom=zoom, layers=layers,
             model=model, iterations=int(iterations), step_size=step_size,
-            octaves=int(octaves), max_dim=int(max_dim),
+            octaves=int(octaves), max_dim=int(max_dim), guide=guide,
             device=current_device(), on_frame=report,
         )
     except RuntimeError as error:
@@ -392,6 +392,10 @@ with gr.Blocks(title="Dream Canvas") as demo:
                     with gr.Row():
                         video_start = gr.Number(value=0, label="Começa em (s)", precision=1)
                         video_duration = gr.Number(value=3, label="Dura (s)", precision=1)
+                    with gr.Accordion("Guiar por outra imagem", open=False):
+                        video_guide = gr.Image(type="pil", label="Imagem-guia", height=160)
+                        gr.Markdown("Os quadros crescem com as formas desta imagem. As características dela são calculadas uma vez e valem para o vídeo inteiro.", elem_classes="dc-hint")
+
                     gr.Markdown("Cerca de 0,7 s de processamento por quadro. "
                                 "Três segundos de vídeo levam perto de um minuto.",
                                 elem_classes="dc-hint")
@@ -439,6 +443,10 @@ with gr.Blocks(title="Dream Canvas") as demo:
                         0.005, 0.08, value=video_module.DEFAULT_ZOOM, step=0.005,
                         label="Velocidade",
                         info="Lento hipnotiza; rápido não dá tempo das criaturas se formarem.")
+                    with gr.Accordion("Guiar por outra imagem", open=False):
+                        zoom_guide = gr.Image(type="pil", label="Imagem-guia", height=160)
+                        gr.Markdown("Os quadros crescem com as formas desta imagem. As características dela são calculadas uma vez e valem para o vídeo inteiro.", elem_classes="dc-hint")
+
                     gr.Markdown("Cerca de 0,4 s por quadro. "
                                 "Cinco segundos levam perto de 40 s.",
                                 elem_classes="dc-hint")
@@ -495,7 +503,7 @@ with gr.Blocks(title="Dream Canvas") as demo:
         video_preset.change(apply_motion_preset, [video_preset],
                             [video_model, video_layers, video_step])
         video_button.click(run_video,
-                           [video_in, video_model, video_layers, video_iterations,
+                           [video_in, video_guide, video_model, video_layers, video_iterations,
                             video_step, video_octaves, video_blend, video_max_dim,
                             video_flow, video_start, video_duration],
                            video_out)
@@ -505,7 +513,7 @@ with gr.Blocks(title="Dream Canvas") as demo:
         zoom_image.select(mark_center, [zoom_image],
                           [zoom_marked, zoom_center, zoom_center_label])
         zoom_button.click(run_zoom,
-                          [zoom_image, zoom_center, zoom_model, zoom_layers,
+                          [zoom_image, zoom_guide, zoom_center, zoom_model, zoom_layers,
                            zoom_iterations, zoom_step, zoom_octaves, zoom_duration,
                            zoom_fps, zoom_speed, zoom_max_dim],
                           zoom_out)

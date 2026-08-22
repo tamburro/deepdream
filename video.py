@@ -26,8 +26,19 @@ from deepdream import (
     DEFAULT_MODEL,
     DEFAULT_OCTAVE_SCALE,
     DEFAULT_STEP_SIZE,
+    FeatureExtractor,
     dream,
+    guide_features,
+    pick_device,
 )
+
+
+def _prepare_guide(guide, model, layers, device):
+    """Ativações da guia, calculadas uma vez para o vídeo inteiro."""
+    if guide is None:
+        return None
+    extractor = FeatureExtractor(model, layers, device)
+    return guide_features(extractor, guide, device)
 
 # Padrões pensados para vídeo, não para imagem isolada: menos iterações por
 # quadro, porque o efeito se acumula ao longo dos quadros pela realimentação.
@@ -151,6 +162,7 @@ def zoom_video(
     octave_scale=DEFAULT_OCTAVE_SCALE,
     jitter=DEFAULT_JITTER,
     objective="l2",
+    guide=None,
     seed=0,
     device=None,
     max_dim=DEFAULT_MAX_DIM,
@@ -160,6 +172,9 @@ def zoom_video(
     """Zoom infinito a partir de uma imagem. Devolve o caminho de saída."""
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg não encontrado. Instale com: brew install ffmpeg")
+
+    device = pick_device(device)
+    guides = _prepare_guide(guide, model, layers, device)
 
     image = image.convert("RGB")
     if max_dim:
@@ -183,7 +198,7 @@ def zoom_video(
                 Image.fromarray(frame),
                 layers=layers, model=model, iterations=iterations,
                 step_size=step_size, octaves=octaves, octave_scale=octave_scale,
-                jitter=jitter, max_dim=None, objective=objective,
+                jitter=jitter, max_dim=None, objective=objective, guide=guides,
                 seed=seed, device=device,
             ))
             write.stdin.write(dreamed.tobytes())
@@ -216,6 +231,7 @@ def process(
     octave_scale=DEFAULT_OCTAVE_SCALE,
     jitter=DEFAULT_JITTER,
     objective="l2",
+    guide=None,
     seed=0,
     device=None,
     max_dim=DEFAULT_MAX_DIM,
@@ -231,6 +247,9 @@ def process(
     """Aplica DeepDream a um vídeo inteiro. Devolve o caminho de saída."""
     if not shutil.which("ffmpeg"):
         raise RuntimeError("ffmpeg não encontrado. Instale com: brew install ffmpeg")
+
+    device = pick_device(device)
+    guides = _prepare_guide(guide, model, layers, device)
 
     info = probe(source)
     size = output_size(info["width"], info["height"], max_dim)
@@ -322,6 +341,8 @@ def main():
     parser.add_argument("--octave-scale", type=float, default=DEFAULT_OCTAVE_SCALE)
     parser.add_argument("--jitter", type=int, default=DEFAULT_JITTER)
     parser.add_argument("--objective", choices=["l2", "mean"], default="l2")
+    parser.add_argument("-g", "--guide", type=Path,
+                        help="Imagem-guia: os quadros puxam para as formas dela")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", choices=["mps", "cuda", "cpu"])
     parser.add_argument("--max-dim", type=int, default=DEFAULT_MAX_DIM)
@@ -351,6 +372,7 @@ def main():
             octave_scale=args.octave_scale,
             jitter=args.jitter,
             objective=args.objective,
+            guide=Image.open(args.guide) if args.guide else None,
             seed=args.seed,
             device=args.device,
             max_dim=args.max_dim,

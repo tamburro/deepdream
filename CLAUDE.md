@@ -57,7 +57,9 @@ truque é que o gradiente de `(x * melhor).sum()` em relação a x é exatamente
 `no_grad` porque a escolha é constante, não diferenciável.
 
 As ativações da guia são calculadas uma vez, antes do laço, e reusadas em todos
-os passos e octaves.
+os passos e octaves. Em vídeo e zoom, `_prepare_guide` as calcula uma vez para
+a sequência inteira e passa a lista pronta — por isso `dream(guide=...)` aceita
+tanto uma PIL.Image quanto ativações já calculadas.
 
 ## Convenções
 - Nomes de camada são canônicos no formato Caffe (`inception_4c/output`) e cada

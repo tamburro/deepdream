@@ -71,8 +71,12 @@ vocabulário visual.
 .venv/bin/python deepdream.py foto.jpg -g flores.jpg -o saida.png
 ```
 
-Na interface está em **Guiar por outra imagem**, na aba Imagem. Com guia, o
+Funciona nas três abas — Imagem, Vídeo e Zoom — no accordion **Guiar por outra
+imagem**, e nas CLIs de `deepdream.py` e `video.py` pela flag `-g`. Com guia, o
 parâmetro `--objective` é ignorado.
+
+Em vídeo e zoom as características da guia são calculadas **uma vez** e valem
+para a sequência inteira, então o custo por quadro não muda.
 
 ## Vídeo
 
