@@ -36,6 +36,19 @@ determinísticos e o DeepDream amplifica a diferença até ela ficar visível
 (medido: diferença média de 8/255 entre duas execuções com a mesma seed).
 Para comparar parâmetros de forma controlada, fixar seed **e** usar CPU.
 
+## ZeroGPU
+Rodando no Hugging Face Space, `spaces` é importável e `ZEROGPU` fica verdadeiro.
+Duas regras vêm da documentação deles e não devem ser revertidas:
+- O modelo é carregado em `cuda` **na importação** (`preload`), não dentro da
+  função decorada. Fora do `@spaces.GPU` existe um modo de emulação CUDA que
+  permite isso, e as transferências são otimizadas na inicialização.
+- A duração declarada em `@spaces.GPU` é **dinâmica** (`estimate_duration`).
+  Declarar perto do real melhora a prioridade do visitante na fila; pedir muito
+  mais que o necessário custa prioridade à toa.
+
+A cota de GPU é debitada de quem acessa, não do dono do Space — por isso vale
+economizar segundos por chamada.
+
 ## Convenções
 - Nomes de camada são canônicos no formato Caffe (`inception_4c/output`) e cada
   backend traduz para o nome real do seu módulo via a terceira entrada de `MODELS`.

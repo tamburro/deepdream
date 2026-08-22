@@ -7,7 +7,6 @@ absoluta do gradiente e pirâmide de octaves com reinjeção de detalhe.
 """
 
 import argparse
-import copy
 from pathlib import Path
 
 import numpy as np
@@ -118,33 +117,47 @@ def resolve_layer(name):
     )
 
 
+def load_model(model_name, device):
+    """Carrega um modelo já no device pedido e o guarda em cache.
+
+    O cache é por (modelo, device) e os módulos são reusados como estão, sem
+    cópia por chamada. É a forma recomendada pelo ZeroGPU: colocar o modelo em
+    `cuda` no nível do módulo é bem mais eficiente que mover a cada execução,
+    porque as transferências são otimizadas na inicialização.
+    """
+    key = (model_name, str(device))
+    if key not in _CACHE:
+        loader, _, _ = MODELS[model_name]
+        base, transform = loader()
+        base.eval()
+        for p in base.parameters():
+            p.requires_grad_(False)
+        base.to(device)
+        if isinstance(transform, nn.Module):
+            transform.to(device)
+        _CACHE[key] = (base, transform)
+    return _CACHE[key]
+
+
+def preload(device, model_name=None):
+    """Aquece o cache na inicialização, fora de qualquer função decorada."""
+    load_model(model_name or DEFAULT_MODEL, device)
+
+
 class FeatureExtractor(nn.Module):
     """Roda o GoogLeNet até o bloco mais profundo pedido e devolve as ativações."""
 
     def __init__(self, model_name, layers, device):
         super().__init__()
-        loader, order, to_attr = MODELS[model_name]
+        _, order, to_attr = MODELS[model_name]
         targets = [to_attr(resolve_layer(name)) for name in layers]
         indices = sorted({order.index(t) for t in targets})
 
-        if model_name not in _CACHE:
-            _CACHE[model_name] = loader()
-        base, transform = _CACHE[model_name]
-        base.eval()
-        # O transform do torchvision tem buffers, então também precisa ser cópia.
-        self.transform = copy.deepcopy(transform)
-
-        # Cópia: o cache guarda o modelo em CPU e os blocos movidos para a GPU
-        # precisam ser independentes dele (o ZeroGPU derruba o contexto CUDA
-        # entre chamadas, e um cache apontando para tensores CUDA fica inválido).
+        base, self.transform = load_model(model_name, device)
         self.blocks = nn.ModuleList(
-            copy.deepcopy(getattr(base, name)) for name in order[: indices[-1] + 1]
+            getattr(base, name) for name in order[: indices[-1] + 1]
         )
         self.taps = set(indices)
-
-        for p in self.parameters():
-            p.requires_grad_(False)
-        self.to(device)
 
     def forward(self, img):
         """img: tensor (3, H, W) em [0, 1]."""

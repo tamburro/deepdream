@@ -54,6 +54,7 @@ from deepdream import (
     MODELS,
     dream,
     pick_device,
+    preload,
 )
 
 # Uma pasta só, previsível, em vez de um mkdtemp novo por geração — assim dá
@@ -85,7 +86,10 @@ def prune_outputs():
 
 prune_outputs()
 
-FORCED_DEVICE = os.environ.get("DEEPDREAM_DEVICE")
+# No ZeroGPU a GPU real só existe dentro da função decorada, mas fora dela há
+# um modo de emulação CUDA — é por isso que o modelo pode (e deve) ser colocado
+# em cuda já na importação.
+FORCED_DEVICE = os.environ.get("DEEPDREAM_DEVICE") or ("cuda" if ZEROGPU else None)
 
 
 # No ZeroGPU a GPU só existe dentro da função decorada, então o device é
@@ -95,6 +99,12 @@ def current_device():
 
 
 _startup_device = current_device()
+
+# Aquece o cache na importação, fora de qualquer função decorada: o ZeroGPU
+# otimiza as transferências feitas na inicialização, e assim cada chamada não
+# paga o custo de mover o modelo — custo que sairia da cota do visitante.
+preload(_startup_device)
+
 DEFAULT_MAX_DIM_CAP = 768 if _startup_device.type == "cpu" and not ZEROGPU else 1536
 MAX_DIM_CAP = int(os.environ.get("DEEPDREAM_MAX_DIM", DEFAULT_MAX_DIM_CAP))
 
@@ -160,7 +170,19 @@ def apply_motion_preset(name):
     return p["model"], p["layers"], p["step_size"]
 
 
-@spaces.GPU(duration=120)
+def estimate_duration(image, model, layers, iterations, step_size, octaves,
+                      octave_scale, jitter, max_dim, mode, seed, progress=None):
+    """Duração declarada ao ZeroGPU, em segundos.
+
+    Declarar perto do real melhora a prioridade do visitante na fila — pedir
+    dois minutos para um trabalho de dez segundos custa prioridade à toa.
+    """
+    steps = int(iterations) * int(octaves)
+    area = (min(int(max_dim), MAX_DIM_CAP) / 1024) ** 2
+    return int(min(120, max(30, 20 + steps * area * 0.5)))
+
+
+@spaces.GPU(duration=estimate_duration)
 def run(image, model, layers, iterations, step_size, octaves, octave_scale,
         jitter, max_dim, mode, seed, progress=gr.Progress()):
     if image is None:
