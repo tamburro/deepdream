@@ -193,6 +193,32 @@ A envoltória é o RMS por quadro, normalizado pelo percentil 95 em vez do máxi
 a 2 Hz: a variação do movimento entre quadros sobe de 0,76 para 2,63 com
 reatividade 1,5.
 
+## Montar um conjunto para treinar
+
+`dataset.py` baixa imagens do Wikimedia Commons já organizadas em pastas que o
+`ImageFolder` do torchvision lê como classes.
+
+```bash
+.venv/bin/python dataset.py --category "Botanical illustrations by family" \
+  --per-class 300 --min-per-class 40 --strict-licenses -o dataset/botanical
+```
+
+Por que a Commons e não uma raspagem de busca de imagens: a licença de cada
+arquivo vem declarada, a árvore de categorias já dá os **rótulos**, e a API
+devolve a imagem redimensionada no servidor — não é preciso baixar originais de
+20 MB para treinar a 224px.
+
+`Botanical illustrations by family` tem **396 famílias**. A maioria é pequena
+demais e cai no `--min-per-class`; sobram as que valem. Uma execução completa
+leva dezenas de minutos, então vale rodar em segundo plano. Use
+`--max-classes` para testar antes.
+
+`--strict-licenses` restringe a domínio público e CC0, deixando de fora CC BY-SA
+— copyleft cujo compartilhamento nas mesmas condições pode alcançar o que se
+deriva dele, inclusive um modelo treinado.
+
+O `manifest.csv` guarda origem, licença e autoria de cada arquivo.
+
 ## Plugin do Figma
 
 Exporta a camada selecionada, aplica o efeito e insere o resultado de volta no

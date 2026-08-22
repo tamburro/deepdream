@@ -30,6 +30,7 @@ O remote `space` já está configurado no git local. `git push space main` publi
 | `theme.py` | Tradução do DESIGN.md para tokens do Gradio. |
 | `local.py` | Mesma interface numa janela nativa (pywebview). |
 | `clipguide.py` | Objetivo por texto via CLIP. Roda em CPU de propósito. |
+| `dataset.py` | Baixa conjuntos do Wikimedia Commons para treinar. |
 | `figma-plugin/` | Plugin que fala com o `server.py`. |
 
 Dependências separadas de propósito: `requirements.txt` (núcleo + web),
@@ -152,7 +153,8 @@ existe), custa zero, mas a alocação de GPU numa rota não-Gradio é incerta.
 2. **CLIP com texto** — sonhar em direção a uma descrição escrita.
 3. **Preset deepdream.c** — feito.
 4. **Áudio-reativo** no zoom — feito.
-5. **Fine-tuning** do GoogLeNet num conjunto próprio, para dreams autorais.
+5. **Fine-tuning** do GoogLeNet num conjunto próprio. O `dataset.py` já monta o
+   conjunto; falta o script de treino.
 
 **Antes de monetizar:** confirmar a licença dos pesos `places365` e `places205`
 (CSAIL/MIT, alguns termos são só para pesquisa). O `bvlc` diz "released for
