@@ -212,14 +212,19 @@ def _guided_objective(activations, guides):
     return total
 
 
-def _gradient(model, img, objective):
+def _gradient(score, img):
+    """`score` recebe o tensor da imagem e devolve um escalar a maximizar.
+
+    Generalizado assim porque o objetivo do GoogLeNet trabalha sobre ativações
+    de camada, enquanto o do CLIP trabalha sobre a imagem inteira.
+    """
     img = img.detach().requires_grad_(True)
-    loss = objective(model(img))
+    loss = score(img)
     (grad,) = torch.autograd.grad(loss, img)
     return grad, loss.item()
 
 
-def _tiled_gradient(model, img, objective, tile_size):
+def _tiled_gradient(score, img, tile_size):
     """Gradiente por ladrilhos, para imagens que não cabem na memória de uma vez.
 
     Este caminho não existe no original: use tile_size grande o bastante para
@@ -237,7 +242,7 @@ def _tiled_gradient(model, img, objective, tile_size):
             tile = rolled[:, y : y + tile_size, x : x + tile_size]
             if min(tile.shape[1], tile.shape[2]) < 96:
                 continue
-            loss = objective(model(tile))
+            loss = score(tile)
             loss.backward()
             total_loss += loss.item()
 
@@ -250,16 +255,16 @@ def _zoom(array, factor_y, factor_x):
     return nd.zoom(array, (1, factor_y, factor_x), order=1)
 
 
-def _make_step(model, img, objective, step_size, jitter, tile_size):
+def _make_step(score, img, step_size, jitter, tile_size):
     """Um passo de subida de gradiente, equivalente ao make_step original."""
     if jitter:
         ox, oy = np.random.randint(-jitter, jitter + 1, size=2)
         img = torch.roll(img, shifts=(int(oy), int(ox)), dims=(1, 2))
 
     if max(img.shape[1], img.shape[2]) <= tile_size:
-        grad, loss = _gradient(model, img, objective)
+        grad, loss = _gradient(score, img)
     else:
-        grad, loss = _tiled_gradient(model, img, objective, tile_size)
+        grad, loss = _tiled_gradient(score, img, tile_size)
 
     # Passo normalizado pela média absoluta do gradiente, como no Caffe.
     # step_size é dado em unidades de pixel 0-255; aqui a imagem vive em [0, 1].
@@ -285,11 +290,16 @@ def dream(
     tile_size=512,
     objective="l2",
     guide=None,
+    text=None,
+    cutouts=16,
     seed=None,
     device=None,
     on_step=None,
 ):
     """Aplica DeepDream numa PIL.Image e devolve uma PIL.Image.
+
+    Com `text`, otimiza a imagem para se parecer com a descrição, via CLIP —
+    aí o modelo, as camadas e o objetivo não são usados.
 
     Com `guide` (PIL.Image ou ativações de `guide_features`), usa o objetivo
     guiado do notebook original:
@@ -300,15 +310,29 @@ def dream(
         np.random.seed(seed)
 
     device = pick_device(device)
-    extractor = FeatureExtractor(model, layers, device)
 
-    if guide is not None:
+    if text:
+        # O CLIP não usa camadas do GoogLeNet: pontua a imagem inteira.
+        import clipguide
+
+        # O backward do ViT em MPS é ~100x mais lento que em CPU (ver clipguide).
+        if device.type == "mps":
+            device = clipguide.pick_device()
+        score = clipguide.TextScorer(text, device, cutouts=cutouts)
+        # Os recortes do CLIP já cobrem várias escalas; ladrilhar por cima
+        # pontuaria cada pedaço contra o texto e quebraria a composição.
+        tile_size = max(tile_size, 1 << 30)
+        extractor = None
+    else:
+        extractor = FeatureExtractor(model, layers, device)
+
+    if extractor is not None and guide is not None:
         # Aceita PIL.Image ou ativações já calculadas — o vídeo passa as
         # ativações prontas para não recalculá-las a cada quadro.
         guides = guide if isinstance(guide, list) else guide_features(extractor, guide, device)
-        objective_fn = lambda acts: _guided_objective(acts, guides)  # noqa: E731
-    else:
-        objective_fn = lambda acts: _objective(acts, objective)  # noqa: E731
+        score = lambda img: _guided_objective(extractor(img), guides)  # noqa: E731
+    elif extractor is not None:
+        score = lambda img: _objective(extractor(img), objective)  # noqa: E731
 
     image = image.convert("RGB")
     if max_dim:
@@ -336,9 +360,7 @@ def dream(
         img = torch.from_numpy(octave_base + detail).to(device)
 
         for _ in range(iterations):
-            img, loss = _make_step(
-                extractor, img, objective_fn, step_size, jitter, tile_size
-            )
+            img, loss = _make_step(score, img, step_size, jitter, tile_size)
             done += 1
             if on_step:
                 on_step(done, total_steps, loss)
@@ -368,6 +390,10 @@ def main():
     parser.add_argument("--objective", choices=["l2", "mean"], default="l2")
     parser.add_argument("-g", "--guide", type=Path,
                         help="Imagem-guia: a saída puxa para as formas dela")
+    parser.add_argument("-t", "--text",
+                        help="Descrição para o CLIP perseguir, em vez das camadas")
+    parser.add_argument("--cutouts", type=int, default=16,
+                        help="Recortes por passo no modo texto. Mais, mais estável")
     parser.add_argument("--seed", type=int)
     parser.add_argument("--device", choices=["mps", "cuda", "cpu"])
     args = parser.parse_args()
@@ -390,6 +416,8 @@ def main():
         tile_size=args.tile_size,
         objective=args.objective,
         guide=Image.open(args.guide) if args.guide else None,
+        text=args.text,
+        cutouts=args.cutouts,
         seed=args.seed,
         device=args.device,
         on_step=report,

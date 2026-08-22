@@ -61,6 +61,19 @@ os passos e octaves. Em vídeo e zoom, `_prepare_guide` as calcula uma vez para
 a sequência inteira e passa a lista pronta — por isso `dream(guide=...)` aceita
 tanto uma PIL.Image quanto ativações já calculadas.
 
+## CLIP e o MPS
+`clipguide.pick_device()` **evita MPS de propósito**. Medido: o backward do ViT
+do CLIP leva 39,5 s em MPS contra 0,38 s em CPU, já aquecido e de forma
+consistente. Não reverter para "usar a GPU quando houver" sem medir de novo.
+
+O tag `openai` do open_clip foi treinado com QuickGELU: o nome do modelo tem de
+ser `ViT-B-32-quickgelu`. Com `ViT-B-32` o open_clip só emite um aviso e usa a
+ativação errada, degradando o resultado em silêncio.
+
+`_gradient`, `_tiled_gradient` e `_make_step` recebem um `score(img) -> escalar`,
+não mais `(modelo, objetivo)`: o objetivo do GoogLeNet trabalha sobre ativações
+de camada e o do CLIP sobre a imagem inteira.
+
 ## Convenções
 - Nomes de camada são canônicos no formato Caffe (`inception_4c/output`) e cada
   backend traduz para o nome real do seu módulo via a terceira entrada de `MODELS`.

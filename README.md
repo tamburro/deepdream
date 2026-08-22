@@ -78,6 +78,27 @@ parâmetro `--objective` é ignorado.
 Em vídeo e zoom as características da guia são calculadas **uma vez** e valem
 para a sequência inteira, então o custo por quadro não muda.
 
+## Sonhar em direção a um texto
+
+Usa CLIP: em vez de amplificar camadas, a imagem é otimizada até o CLIP
+considerá-la parecida com uma descrição escrita.
+
+```bash
+.venv/bin/pip install -r requirements-clip.txt
+.venv/bin/python deepdream.py foto.jpg -t "um campo de girassóis" -n 20 --step-size 3
+```
+
+O que faz funcionar são os **recortes aleatórios**: otimizar a imagem inteira
+contra o texto produz ruído adversarial, que o CLIP reconhece e nós não.
+Pontuando dezenas de recortes de tamanhos variados por passo, a descrição
+precisa valer em muitas escalas, e o resultado vira forma.
+
+**Roda em CPU de propósito.** Medido num M4: o backward do ViT do CLIP leva
+39,5 s em MPS contra 0,38 s em CPU — cem vezes mais lento, de forma consistente.
+É limitação do backend MPS. Uma imagem de 384px leva cerca de 25 s.
+
+Com texto, o modelo, as camadas e a imagem-guia são ignorados.
+
 ## Vídeo
 
 Aplica o efeito a um vídeo inteiro, com coerência temporal:

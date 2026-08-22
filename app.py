@@ -36,6 +36,13 @@ from PIL import ImageDraw
 import theme as dc_theme
 
 try:
+    import clipguide  # noqa: F401
+
+    CLIP_OK = True
+except ImportError:
+    CLIP_OK = False
+
+try:
     import video as video_module
 
     VIDEO_OK = not ZEROGPU and shutil.which("ffmpeg") is not None
@@ -170,8 +177,9 @@ def apply_motion_preset(name):
     return p["model"], p["layers"], p["step_size"]
 
 
-def estimate_duration(image, guide, model, layers, iterations, step_size, octaves,
-                      octave_scale, jitter, max_dim, mode, seed, progress=None):
+def estimate_duration(image, guide, text, cutouts, model, layers, iterations,
+                      step_size, octaves, octave_scale, jitter, max_dim, mode,
+                      seed, progress=None):
     """Duração declarada ao ZeroGPU, em segundos.
 
     Declarar perto do real melhora a prioridade do visitante na fila — pedir
@@ -183,11 +191,11 @@ def estimate_duration(image, guide, model, layers, iterations, step_size, octave
 
 
 @spaces.GPU(duration=estimate_duration)
-def run(image, guide, model, layers, iterations, step_size, octaves, octave_scale,
-        jitter, max_dim, mode, seed, progress=gr.Progress()):
+def run(image, guide, text, cutouts, model, layers, iterations, step_size, octaves,
+        octave_scale, jitter, max_dim, mode, seed, progress=gr.Progress()):
     if image is None:
         raise gr.Error("Escolha uma imagem.")
-    if not layers:
+    if not layers and not text:
         raise gr.Error("Escolha ao menos uma camada.")
 
     def report(done, total, loss):
@@ -199,6 +207,7 @@ def run(image, guide, model, layers, iterations, step_size, octaves, octave_scal
         octaves=int(octaves), octave_scale=octave_scale,
         jitter=int(jitter), max_dim=min(int(max_dim), MAX_DIM_CAP),
         objective=mode, guide=guide,
+        text=(text or "").strip() or None, cutouts=int(cutouts),
         seed=int(seed) if seed is not None else None,
         device=current_device(), on_step=report,
     )
@@ -343,6 +352,19 @@ with gr.Blocks(title="Dream Canvas") as demo:
                         "pétalas; uma de arquitetura, arcos. Com guia, o Modo é "
                         "ignorado.",
                         elem_classes="dc-hint")
+
+                if CLIP_OK:
+                    with gr.Accordion("Sonhar em direção a um texto", open=False):
+                        text = gr.Textbox(
+                            label="Descrição", lines=2,
+                            placeholder="um campo de girassóis, ilustração botânica")
+                        cutouts = gr.Slider(4, 64, value=16, step=4,
+                                            label="Recortes por passo",
+                                            info="Mais recortes: formas mais coerentes, mais lento.")
+                        gr.Markdown("O CLIP compara imagem e texto, e a sua imagem é empurrada até parecer com a descrição. Substitui modelo, camadas e guia. Roda em CPU — o backward do CLIP em MPS é ~100x mais lento. Cerca de 25 s a 384px.", elem_classes="dc-hint")
+                else:
+                    text = gr.State("")
+                    cutouts = gr.State(16)
 
                 run_button = gr.Button("Sonhar", variant="primary", size="lg")
 
@@ -495,8 +517,8 @@ with gr.Blocks(title="Dream Canvas") as demo:
     preset.change(apply_preset, [preset],
                   [model, layers, iterations, step_size, octaves, octave_scale])
     run_button.click(run,
-                     [image, guide, model, layers, iterations, step_size, octaves,
-                      octave_scale, jitter, max_dim, mode, seed],
+                     [image, guide, text, cutouts, model, layers, iterations,
+                      step_size, octaves, octave_scale, jitter, max_dim, mode, seed],
                      [comparison, download])
 
     if VIDEO_OK:

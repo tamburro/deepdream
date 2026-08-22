@@ -163,6 +163,7 @@ def zoom_video(
     jitter=DEFAULT_JITTER,
     objective="l2",
     guide=None,
+    text=None,
     seed=0,
     device=None,
     max_dim=DEFAULT_MAX_DIM,
@@ -174,7 +175,7 @@ def zoom_video(
         raise RuntimeError("ffmpeg não encontrado. Instale com: brew install ffmpeg")
 
     device = pick_device(device)
-    guides = _prepare_guide(guide, model, layers, device)
+    guides = None if text else _prepare_guide(guide, model, layers, device)
 
     image = image.convert("RGB")
     if max_dim:
@@ -198,7 +199,7 @@ def zoom_video(
                 Image.fromarray(frame),
                 layers=layers, model=model, iterations=iterations,
                 step_size=step_size, octaves=octaves, octave_scale=octave_scale,
-                jitter=jitter, max_dim=None, objective=objective, guide=guides,
+                jitter=jitter, max_dim=None, objective=objective, guide=guides, text=text,
                 seed=seed, device=device,
             ))
             write.stdin.write(dreamed.tobytes())
@@ -232,6 +233,7 @@ def process(
     jitter=DEFAULT_JITTER,
     objective="l2",
     guide=None,
+    text=None,
     seed=0,
     device=None,
     max_dim=DEFAULT_MAX_DIM,
@@ -249,7 +251,7 @@ def process(
         raise RuntimeError("ffmpeg não encontrado. Instale com: brew install ffmpeg")
 
     device = pick_device(device)
-    guides = _prepare_guide(guide, model, layers, device)
+    guides = None if text else _prepare_guide(guide, model, layers, device)
 
     info = probe(source)
     size = output_size(info["width"], info["height"], max_dim)
@@ -343,6 +345,8 @@ def main():
     parser.add_argument("--objective", choices=["l2", "mean"], default="l2")
     parser.add_argument("-g", "--guide", type=Path,
                         help="Imagem-guia: os quadros puxam para as formas dela")
+    parser.add_argument("-t", "--text",
+                        help="Descrição para o CLIP perseguir. Bem mais lento")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--device", choices=["mps", "cuda", "cpu"])
     parser.add_argument("--max-dim", type=int, default=DEFAULT_MAX_DIM)
@@ -373,6 +377,7 @@ def main():
             jitter=args.jitter,
             objective=args.objective,
             guide=Image.open(args.guide) if args.guide else None,
+            text=args.text,
             seed=args.seed,
             device=args.device,
             max_dim=args.max_dim,
