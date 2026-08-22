@@ -7,3 +7,8 @@ __pycache__/
 *.png
 *.jpg
 !exemplo.jpg
+
+# Conjuntos de treino e checkpoints ficam fora do repo.
+dataset/
+modelos/
+*.pt
