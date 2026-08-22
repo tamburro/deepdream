@@ -13,6 +13,8 @@ short_description: Reprodução fiel do DeepDream original do Google, de 2015
 
 # Dream Canvas
 
+O estado do projeto, decisões e próximos passos estão em [HANDOFF.md](HANDOFF.md).
+
 O design system está em [DESIGN.md](DESIGN.md) e a implementação em Gradio, em
 [theme.py](theme.py). O DESIGN.md é a fonte: mexa nele antes de mexer nos tokens.
 
