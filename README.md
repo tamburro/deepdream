@@ -59,6 +59,24 @@ DEEPDREAM_SHARE=1 .venv/bin/python app.py
 Modelos: `bvlc` (padrão), `places365`, `places205`, `torchvision`.
 Camadas: `inception_3a` a `inception_5b`.
 
+## Duas linhagens do original
+
+O preset **deepdream.c (2021)** reproduz os padrões da reescrita do próprio
+Mordvintsev ([znah/deepdream_c](https://github.com/znah/deepdream_c)): 7 octaves,
+20 passos, jitter determinístico e pirâmide que **amplia e continua** em vez de
+reinjetar detalhe. O resultado é bem mais agressivo que o **Clássico 2015**,
+que segue o notebook em Caffe.
+
+Os dois controles estão em Ajuste fino:
+
+- **Padrão do tremor** — `Aleatório` (Caffe) ou `Sequência fixa`, os
+  deslocamentos por múltiplos de 79 e 127 do `deepdream.c`.
+- **Pirâmide** — `Reinjetar detalhe` (Caffe) ou `Ampliar e continuar`
+  (`deepdream.c`).
+
+Combinar `Sequência fixa` + `Ampliar e continuar` remove toda aleatoriedade: em
+CPU o resultado é bit-exato **sem precisar de seed**.
+
 ## Guiar por outra imagem
 
 O objetivo `objective_guide` do notebook original: em vez de amplificar as

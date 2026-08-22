@@ -255,10 +255,21 @@ def _zoom(array, factor_y, factor_x):
     return nd.zoom(array, (1, factor_y, factor_x), order=1)
 
 
-def _make_step(score, img, step_size, jitter, tile_size):
-    """Um passo de subida de gradiente, equivalente ao make_step original."""
+def _make_step(score, img, step_size, jitter, tile_size, jitter_mode="random", step_index=0):
+    """Um passo de subida de gradiente, equivalente ao make_step original.
+
+    `jitter_mode="sequence"` usa os deslocamentos determinísticos do
+    `deepdream.c` (múltiplos dos primos 79 e 127). Descorrelaciona as emendas
+    igual ao aleatório e dispensa seed — mas **não** resolve a não-determinância
+    em MPS (medido: diferença média de 5/255 entre duas execuções), porque essa
+    vem dos kernels, não do sorteio.
+    """
     if jitter:
-        ox, oy = np.random.randint(-jitter, jitter + 1, size=2)
+        if jitter_mode == "sequence":
+            ox = (step_index * 79) % img.shape[2]
+            oy = (step_index * 127) % img.shape[1]
+        else:
+            ox, oy = np.random.randint(-jitter, jitter + 1, size=2)
         img = torch.roll(img, shifts=(int(oy), int(ox)), dims=(1, 2))
 
     if max(img.shape[1], img.shape[2]) <= tile_size:
@@ -286,6 +297,8 @@ def dream(
     octaves=DEFAULT_OCTAVES,
     octave_scale=DEFAULT_OCTAVE_SCALE,
     jitter=DEFAULT_JITTER,
+    jitter_mode="random",
+    pyramid_mode="detail",
     max_dim=1024,
     tile_size=512,
     objective="l2",
@@ -349,23 +362,39 @@ def dream(
     total_steps = octaves * iterations
     done = 0
     detail = np.zeros_like(pyramid[0])
+    grown = None
 
     for index, octave_base in enumerate(pyramid):
         height, width = octave_base.shape[-2:]
-        if index > 0:
-            # O detalhe acumulado sobe de escala e é reinjetado na octave maior.
-            prev_h, prev_w = detail.shape[-2:]
-            detail = _zoom(detail, height / prev_h, width / prev_w)
 
-        img = torch.from_numpy(octave_base + detail).to(device)
+        if pyramid_mode == "grow":
+            # Modo deepdream.c: a imagem cresce e continua sendo trabalhada,
+            # sem separar detalhe. Simples, e o resultado é bem diferente.
+            if index == 0:
+                img = torch.from_numpy(octave_base).to(device)
+            else:
+                prev_h, prev_w = grown.shape[-2:]
+                img = torch.from_numpy(
+                    _zoom(grown, height / prev_h, width / prev_w)
+                ).to(device)
+        else:
+            if index > 0:
+                # O detalhe acumulado sobe de escala e é reinjetado na octave maior.
+                prev_h, prev_w = detail.shape[-2:]
+                detail = _zoom(detail, height / prev_h, width / prev_w)
+            img = torch.from_numpy(octave_base + detail).to(device)
 
-        for _ in range(iterations):
-            img, loss = _make_step(score, img, step_size, jitter, tile_size)
+        for step in range(iterations):
+            img, loss = _make_step(score, img, step_size, jitter, tile_size,
+                                   jitter_mode, index * iterations + step)
             done += 1
             if on_step:
                 on_step(done, total_steps, loss)
 
-        detail = img.cpu().numpy() - octave_base
+        if pyramid_mode == "grow":
+            grown = img.cpu().numpy()
+        else:
+            detail = img.cpu().numpy() - octave_base
 
     array = img.mul(255).clamp(0, 255).byte().permute(1, 2, 0).cpu().numpy()
     return Image.fromarray(array)
@@ -385,6 +414,11 @@ def main():
     parser.add_argument("--octaves", type=int, default=DEFAULT_OCTAVES)
     parser.add_argument("--octave-scale", type=float, default=DEFAULT_OCTAVE_SCALE)
     parser.add_argument("--jitter", type=int, default=DEFAULT_JITTER)
+    parser.add_argument("--jitter-mode", choices=["random", "sequence"], default="random",
+                        help="sequence usa os deslocamentos fixos do deepdream.c")
+    parser.add_argument("--pyramid", choices=["detail", "grow"], default="detail",
+                        help="detail reinjeta detalhe (notebook Caffe); "
+                             "grow amplia e continua (deepdream.c)")
     parser.add_argument("--max-dim", type=int, default=1024)
     parser.add_argument("--tile-size", type=int, default=512)
     parser.add_argument("--objective", choices=["l2", "mean"], default="l2")
@@ -412,6 +446,8 @@ def main():
         octaves=args.octaves,
         octave_scale=args.octave_scale,
         jitter=args.jitter,
+        jitter_mode=args.jitter_mode,
+        pyramid_mode=args.pyramid,
         max_dim=args.max_dim,
         tile_size=args.tile_size,
         objective=args.objective,

@@ -29,6 +29,7 @@ O remote `space` já está configurado no git local. `git push space main` publi
 | `app.py` | Interface Gradio, três abas. |
 | `theme.py` | Tradução do DESIGN.md para tokens do Gradio. |
 | `local.py` | Mesma interface numa janela nativa (pywebview). |
+| `clipguide.py` | Objetivo por texto via CLIP. Roda em CPU de propósito. |
 | `figma-plugin/` | Plugin que fala com o `server.py`. |
 
 Dependências separadas de propósito: `requirements.txt` (núcleo + web),
@@ -116,9 +117,14 @@ o Space é grátis e muda a URL.
 Mordvintsev, em C89 sem dependências (2021). Serve de oráculo de fidelidade.
 Confere com o nosso: camada `inception_4c_output`, objetivo L2
 (`grad[i] = val[i]`), passo `val += 1.5 * grad / mean(|grad|)` e octave 1.4
-bilinear. Diverge em três pontos: ele usa 7 octaves e 20 passos (nós, 4 e 10),
-**não** faz reinjeção de detalhe — a imagem cresce e continua — e o jitter dele
-é determinístico (`sx = passo*79, sy = passo*127`) em vez de aleatório.
+bilinear. As três divergências dele — 7 octaves e 20 passos, pirâmide que cresce
+sem reinjetar detalhe, e jitter determinístico — estão implementadas como o
+preset **deepdream.c (2021)** e como os parâmetros `jitter_mode` e
+`pyramid_mode`.
+
+Medido: o jitter determinístico **não** resolve a não-determinância em MPS
+(diferença média de 5/255), porque ela vem dos kernels. Mas em CPU,
+`sequence` + `grow` é bit-exato sem seed.
 
 ## Armadilhas que custaram tempo
 
@@ -139,12 +145,11 @@ para o plugin funcionar fora da máquina local. É viável (`gr.mount_gradio_app
 existe), custa zero, mas a alocação de GPU numa rota não-Gradio é incerta.
 
 **Próximos passos sugeridos, em ordem:**
-1. **DeepDream guiado** — empurrar a imagem na direção das características de
-   uma segunda imagem-guia. Está no notebook original, é pouca mudança no
-   `_objective`, e é o maior desbloqueio criativo por linha de código.
+1. **DeepDream guiado** — feito.
 2. **CLIP com texto** — sonhar em direção a uma descrição escrita.
-3. **Áudio-reativo** no vídeo, só local.
-4. **Fine-tuning** do GoogLeNet num conjunto próprio, para dreams autorais.
+3. **Preset deepdream.c** — feito.
+4. **Áudio-reativo** no vídeo, só local.
+5. **Fine-tuning** do GoogLeNet num conjunto próprio, para dreams autorais.
 
 **Antes de monetizar:** confirmar a licença dos pesos `places365` e `places205`
 (CSAIL/MIT, alguns termos são só para pesquisa). O `bvlc` diz "released for

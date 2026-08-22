@@ -127,6 +127,7 @@ MODEL_CHOICES = [
 
 MODE_CHOICES = [("Clássico", "l2"), ("Suave", "mean")]
 
+# jitter_mode e pyramid ausentes = receita do notebook em Caffe.
 PRESETS = {
     "Clássico 2015": dict(model="bvlc", layers=["inception_4c/output"], iterations=10,
                           step_size=1.5, octaves=4, octave_scale=1.4),
@@ -142,6 +143,11 @@ PRESETS = {
                             step_size=1.5, octaves=4, octave_scale=1.4),
     "Discreto": dict(model="torchvision", layers=["inception_4c/output"], iterations=10,
                      step_size=1.5, octaves=4, octave_scale=1.4),
+    # Os padrões exatos do deepdream.c, a reescrita do próprio Mordvintsev.
+    "deepdream.c (2021)": dict(model="bvlc", layers=["inception_4c/output"],
+                               iterations=20, step_size=1.5, octaves=7,
+                               octave_scale=1.4, jitter_mode="sequence",
+                               pyramid="grow"),
 }
 
 LAYER_GUIDE = """
@@ -167,8 +173,9 @@ O guia vale para os modelos treinados na ImageNet — o Clássico e o Suave.
 
 def apply_preset(name):
     p = PRESETS[name]
-    return (p["model"], p["layers"], p["iterations"],
-            p["step_size"], p["octaves"], p["octave_scale"])
+    return (p["model"], p["layers"], p["iterations"], p["step_size"],
+            p["octaves"], p["octave_scale"],
+            p.get("jitter_mode", "random"), p.get("pyramid", "detail"))
 
 
 def apply_motion_preset(name):
@@ -178,8 +185,8 @@ def apply_motion_preset(name):
 
 
 def estimate_duration(image, guide, text, cutouts, model, layers, iterations,
-                      step_size, octaves, octave_scale, jitter, max_dim, mode,
-                      seed, progress=None):
+                      step_size, octaves, octave_scale, jitter, jitter_mode,
+                      pyramid, max_dim, mode, seed, progress=None):
     """Duração declarada ao ZeroGPU, em segundos.
 
     Declarar perto do real melhora a prioridade do visitante na fila — pedir
@@ -192,7 +199,8 @@ def estimate_duration(image, guide, text, cutouts, model, layers, iterations,
 
 @spaces.GPU(duration=estimate_duration)
 def run(image, guide, text, cutouts, model, layers, iterations, step_size, octaves,
-        octave_scale, jitter, max_dim, mode, seed, progress=gr.Progress()):
+        octave_scale, jitter, jitter_mode, pyramid, max_dim, mode, seed,
+        progress=gr.Progress()):
     if image is None:
         raise gr.Error("Escolha uma imagem.")
     if not layers and not text:
@@ -205,7 +213,8 @@ def run(image, guide, text, cutouts, model, layers, iterations, step_size, octav
         image, layers=layers, model=model,
         iterations=int(iterations), step_size=step_size,
         octaves=int(octaves), octave_scale=octave_scale,
-        jitter=int(jitter), max_dim=min(int(max_dim), MAX_DIM_CAP),
+        jitter=int(jitter), jitter_mode=jitter_mode, pyramid_mode=pyramid,
+        max_dim=min(int(max_dim), MAX_DIM_CAP),
         objective=mode, guide=guide,
         text=(text or "").strip() or None, cutouts=int(cutouts),
         seed=int(seed) if seed is not None else None,
@@ -386,6 +395,15 @@ with gr.Blocks(title="Dream Canvas") as demo:
                     jitter = gr.Slider(0, 64, value=DEFAULT_JITTER, step=1,
                                        label="Tremor",
                                        info="Desloca a imagem a cada passo. Evita emendas.")
+                    jitter_mode = gr.Radio(
+                        [("Aleatório", "random"), ("Sequência fixa", "sequence")],
+                        value="random", label="Padrão do tremor",
+                        info="Sequência usa os deslocamentos do deepdream.c.")
+                    pyramid = gr.Radio(
+                        [("Reinjetar detalhe", "detail"), ("Ampliar e continuar", "grow")],
+                        value="detail", label="Pirâmide",
+                        info="Reinjetar é o notebook Caffe; ampliar é o deepdream.c, "
+                             "bem mais agressivo.")
                     max_dim = gr.Slider(256, MAX_DIM_CAP, value=min(1024, MAX_DIM_CAP),
                                         step=128, label="Resolução")
                     mode = gr.Radio(MODE_CHOICES, value="l2", label="Modo",
@@ -515,10 +533,12 @@ with gr.Blocks(title="Dream Canvas") as demo:
 
     # ------------------------------------------------------------ ligações
     preset.change(apply_preset, [preset],
-                  [model, layers, iterations, step_size, octaves, octave_scale])
+                  [model, layers, iterations, step_size, octaves, octave_scale,
+                   jitter_mode, pyramid])
     run_button.click(run,
                      [image, guide, text, cutouts, model, layers, iterations,
-                      step_size, octaves, octave_scale, jitter, max_dim, mode, seed],
+                      step_size, octaves, octave_scale, jitter, jitter_mode,
+                      pyramid, max_dim, mode, seed],
                      [comparison, download])
 
     if VIDEO_OK:
