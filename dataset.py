@@ -183,7 +183,8 @@ def build(category, out_dir, depth, per_class, width, min_side, workers,
     classes = subcategories(category, depth) or [category]
     if max_classes:
         classes = classes[:max_classes]
-    print(f"{len(classes)} classes a partir de '{category}' (profundidade {depth})")
+    print(f"{len(classes)} classes a partir de '{category}' "
+          f"(profundidade {depth})", flush=True)
 
     manifest = out_dir / "manifest.csv"
     is_new = not manifest.exists()
@@ -200,7 +201,7 @@ def build(category, out_dir, depth, per_class, width, min_side, workers,
                 items = [i for i in items if is_open(i["license"], strict)]
             if len(items) < min_per_class:
                 print(f"  [{index}/{len(classes)}] {name[:44]:46} "
-                      f"— só {len(items)} candidatos, abaixo do mínimo")
+                      f"— só {len(items)} candidatos, abaixo do mínimo", flush=True)
                 continue
 
             folder = out_dir / "".join(
@@ -221,7 +222,7 @@ def build(category, out_dir, depth, per_class, width, min_side, workers,
                     (folder / filename).unlink(missing_ok=True)
                 folder.rmdir()
                 print(f"  [{index}/{len(classes)}] {name[:44]:46} "
-                      f"— só {len(kept)} baixadas, classe descartada")
+                      f"— só {len(kept)} baixadas, classe descartada", flush=True)
                 continue
 
             for item, filename in kept:
@@ -229,7 +230,8 @@ def build(category, out_dir, depth, per_class, width, min_side, workers,
                                  item["license"], item["artist"], item["source"]])
             handle.flush()
             total += len(kept)
-            print(f"  [{index}/{len(classes)}] {name[:44]:46} {len(kept):4d} imagens")
+            print(f"  [{index}/{len(classes)}] {name[:44]:46} "
+                  f"{len(kept):4d} imagens", flush=True)
 
     print(f"\n{total} imagens em {out_dir}")
     print(f"Procedência em {manifest}")
