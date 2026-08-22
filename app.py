@@ -294,10 +294,15 @@ def clear_cache(include_gradio):
 
 with gr.Blocks(title="Dream Canvas") as demo:
     with gr.Column(elem_id="dc-header"):
+        # Hospedado, "na sua máquina" seria mentira — quem processa é o servidor.
+        onde = (
+            "Processando em <code>ZeroGPU</code>."
+            if ZEROGPU
+            else f"Rodando na sua máquina, em <code>{_startup_device.type}</code>."
+        )
         gr.HTML(
             "<h1>Dream Canvas</h1>"
-            f"<p>O DeepDream original do Google, de 2015, rodando na sua máquina "
-            f"em <code>{'ZeroGPU' if ZEROGPU else _startup_device.type}</code>.</p>"
+            f"<p>O DeepDream original do Google, de 2015. {onde}</p>"
         )
 
     with gr.Tab("Imagem"):
