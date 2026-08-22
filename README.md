@@ -59,6 +59,21 @@ DEEPDREAM_SHARE=1 .venv/bin/python app.py
 Modelos: `bvlc` (padrão), `places365`, `places205`, `torchvision`.
 Camadas: `inception_3a` a `inception_5b`.
 
+## Guiar por outra imagem
+
+O objetivo `objective_guide` do notebook original: em vez de amplificar as
+próprias características, a imagem é empurrada na direção das características
+de uma segunda imagem. Para cada região da sua imagem, o algoritmo acha a
+região da guia que melhor combina e puxa naquela direção — a guia empresta o
+vocabulário visual.
+
+```bash
+.venv/bin/python deepdream.py foto.jpg -g flores.jpg -o saida.png
+```
+
+Na interface está em **Guiar por outra imagem**, na aba Imagem. Com guia, o
+parâmetro `--objective` é ignorado.
+
 ## Vídeo
 
 Aplica o efeito a um vídeo inteiro, com coerência temporal:

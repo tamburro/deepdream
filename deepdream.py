@@ -89,6 +89,7 @@ DEFAULT_STEP_SIZE = 1.5  # em unidades de pixel 0-255, como no Caffe
 DEFAULT_OCTAVES = 4
 DEFAULT_OCTAVE_SCALE = 1.4
 DEFAULT_JITTER = 32
+GUIDE_MAX_DIM = 512
 
 _CACHE = {}
 
@@ -177,9 +178,43 @@ def _objective(activations, mode):
     return sum(a.mean() for a in activations)
 
 
+def guide_features(model, image, device, max_dim=GUIDE_MAX_DIM):
+    """Ativações da imagem-guia, calculadas uma vez e reusadas em todos os passos."""
+    image = image.convert("RGB")
+    if max_dim:
+        image.thumbnail((max_dim, max_dim), Image.LANCZOS)
+    tensor = (
+        torch.from_numpy(np.array(image)).float().div(255).permute(2, 0, 1).to(device)
+    )
+    with torch.no_grad():
+        return [a.detach() for a in model(tensor)]
+
+
+def _guided_objective(activations, guides):
+    """Objetivo `objective_guide` do notebook original.
+
+    Para cada posição da imagem, acha o vetor de características da guia que
+    melhor combina (maior produto escalar) e empurra naquela direção. É isso
+    que faz a guia transferir o "vocabulário" dela para a imagem.
+
+    O gradiente de `(x * melhor).sum()` em relação a x é exatamente `melhor`,
+    que é como o Caffe escrevia direto no `dst.diff`.
+    """
+    total = 0
+    for act, guide in zip(activations, guides):
+        channels = act.shape[1]
+        x = act.reshape(channels, -1)
+        y = guide.reshape(channels, -1)
+        # O argmax não é diferenciável e nem precisa ser: a escolha é constante.
+        with torch.no_grad():
+            best = y[:, (x.t() @ y).argmax(dim=1)]
+        total = total + (x * best).sum()
+    return total
+
+
 def _gradient(model, img, objective):
     img = img.detach().requires_grad_(True)
-    loss = _objective(model(img), objective)
+    loss = objective(model(img))
     (grad,) = torch.autograd.grad(loss, img)
     return grad, loss.item()
 
@@ -202,7 +237,7 @@ def _tiled_gradient(model, img, objective, tile_size):
             tile = rolled[:, y : y + tile_size, x : x + tile_size]
             if min(tile.shape[1], tile.shape[2]) < 96:
                 continue
-            loss = _objective(model(tile), objective)
+            loss = objective(model(tile))
             loss.backward()
             total_loss += loss.item()
 
@@ -249,16 +284,28 @@ def dream(
     max_dim=1024,
     tile_size=512,
     objective="l2",
+    guide=None,
     seed=None,
     device=None,
     on_step=None,
 ):
-    """Aplica DeepDream numa PIL.Image e devolve uma PIL.Image."""
+    """Aplica DeepDream numa PIL.Image e devolve uma PIL.Image.
+
+    Com `guide` (outra PIL.Image), usa o objetivo guiado do notebook original:
+    a imagem é empurrada na direção das características da guia em vez de
+    amplificar as próprias. Nesse caso `objective` é ignorado.
+    """
     if seed is not None:
         np.random.seed(seed)
 
     device = pick_device(device)
     extractor = FeatureExtractor(model, layers, device)
+
+    if guide is not None:
+        guides = guide_features(extractor, guide, device)
+        objective_fn = lambda acts: _guided_objective(acts, guides)  # noqa: E731
+    else:
+        objective_fn = lambda acts: _objective(acts, objective)  # noqa: E731
 
     image = image.convert("RGB")
     if max_dim:
@@ -287,7 +334,7 @@ def dream(
 
         for _ in range(iterations):
             img, loss = _make_step(
-                extractor, img, objective, step_size, jitter, tile_size
+                extractor, img, objective_fn, step_size, jitter, tile_size
             )
             done += 1
             if on_step:
@@ -316,6 +363,8 @@ def main():
     parser.add_argument("--max-dim", type=int, default=1024)
     parser.add_argument("--tile-size", type=int, default=512)
     parser.add_argument("--objective", choices=["l2", "mean"], default="l2")
+    parser.add_argument("-g", "--guide", type=Path,
+                        help="Imagem-guia: a saída puxa para as formas dela")
     parser.add_argument("--seed", type=int)
     parser.add_argument("--device", choices=["mps", "cuda", "cpu"])
     args = parser.parse_args()
@@ -337,6 +386,7 @@ def main():
         max_dim=args.max_dim,
         tile_size=args.tile_size,
         objective=args.objective,
+        guide=Image.open(args.guide) if args.guide else None,
         seed=args.seed,
         device=args.device,
         on_step=report,

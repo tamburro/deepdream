@@ -170,7 +170,7 @@ def apply_motion_preset(name):
     return p["model"], p["layers"], p["step_size"]
 
 
-def estimate_duration(image, model, layers, iterations, step_size, octaves,
+def estimate_duration(image, guide, model, layers, iterations, step_size, octaves,
                       octave_scale, jitter, max_dim, mode, seed, progress=None):
     """Duração declarada ao ZeroGPU, em segundos.
 
@@ -183,7 +183,7 @@ def estimate_duration(image, model, layers, iterations, step_size, octaves,
 
 
 @spaces.GPU(duration=estimate_duration)
-def run(image, model, layers, iterations, step_size, octaves, octave_scale,
+def run(image, guide, model, layers, iterations, step_size, octaves, octave_scale,
         jitter, max_dim, mode, seed, progress=gr.Progress()):
     if image is None:
         raise gr.Error("Escolha uma imagem.")
@@ -198,7 +198,8 @@ def run(image, model, layers, iterations, step_size, octaves, octave_scale,
         iterations=int(iterations), step_size=step_size,
         octaves=int(octaves), octave_scale=octave_scale,
         jitter=int(jitter), max_dim=min(int(max_dim), MAX_DIM_CAP),
-        objective=mode, seed=int(seed) if seed is not None else None,
+        objective=mode, guide=guide,
+        seed=int(seed) if seed is not None else None,
         device=current_device(), on_step=report,
     )
 
@@ -333,6 +334,16 @@ with gr.Blocks(title="Dream Canvas") as demo:
                 image = gr.Image(type="pil", label="Sua imagem", height=260)
                 preset = gr.Radio(list(PRESETS), value="Clássico 2015",
                                   label="Estilo", elem_classes="dc-preset")
+
+                with gr.Accordion("Guiar por outra imagem", open=False):
+                    guide = gr.Image(type="pil", label="Imagem-guia", height=180)
+                    gr.Markdown(
+                        "A sua imagem passa a crescer com as formas desta, em vez "
+                        "de amplificar as próprias. Uma foto de flores faz brotar "
+                        "pétalas; uma de arquitetura, arcos. Com guia, o Modo é "
+                        "ignorado.",
+                        elem_classes="dc-hint")
+
                 run_button = gr.Button("Sonhar", variant="primary", size="lg")
 
                 with gr.Accordion("Ajuste fino", open=False):
@@ -476,7 +487,7 @@ with gr.Blocks(title="Dream Canvas") as demo:
     preset.change(apply_preset, [preset],
                   [model, layers, iterations, step_size, octaves, octave_scale])
     run_button.click(run,
-                     [image, model, layers, iterations, step_size, octaves,
+                     [image, guide, model, layers, iterations, step_size, octaves,
                       octave_scale, jitter, max_dim, mode, seed],
                      [comparison, download])
 

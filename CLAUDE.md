@@ -49,6 +49,16 @@ Duas regras vêm da documentação deles e não devem ser revertidas:
 A cota de GPU é debitada de quem acessa, não do dono do Space — por isso vale
 economizar segundos por chamada.
 
+## Objetivo guiado
+`_guided_objective` reproduz o `objective_guide` do Caffe: para cada posição,
+escolhe o vetor da guia com maior produto escalar e usa ele como gradiente. O
+truque é que o gradiente de `(x * melhor).sum()` em relação a x é exatamente
+`melhor` — era o que o Caffe escrevia direto no `dst.diff`. O argmax roda sob
+`no_grad` porque a escolha é constante, não diferenciável.
+
+As ativações da guia são calculadas uma vez, antes do laço, e reusadas em todos
+os passos e octaves.
+
 ## Convenções
 - Nomes de camada são canônicos no formato Caffe (`inception_4c/output`) e cada
   backend traduz para o nome real do seu módulo via a terceira entrada de `MODELS`.
