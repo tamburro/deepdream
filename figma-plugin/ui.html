@@ -1,90 +1,251 @@
 <meta charset="utf-8" />
 <style>
-  /* Fundo explícito: o Figma tem tema escuro, e sem isso o texto some. */
-  body { font: 11px/1.5 Inter, sans-serif; margin: 0; padding: 12px;
-         color: #333; background: #fff; }
-  label { display: block; margin: 10px 0 3px; font-weight: 600; }
-  code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; }
-  select, input { width: 100%; box-sizing: border-box; padding: 5px;
-                  border: 1px solid #ddd; border-radius: 4px; font: inherit; }
-  input[type=range] { padding: 0; }
-  button { width: 100%; margin-top: 14px; padding: 9px; border: 0; border-radius: 5px;
-           background: #0d99ff; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
-  button:disabled { background: #b3b3b3; cursor: default; }
+  /* Com themeColors no manifesto, o Figma injeta estas variáveis e o painel
+     acompanha o tema claro ou escuro de quem está usando. O único destoante é
+     o lavanda da ação primária, que é o acento do Dream Canvas. */
+  :root {
+    --accent: #5e6ad2;
+    --accent-hover: #828fff;
+  }
+
+  body {
+    font: 11px/1.5 Inter, system-ui, sans-serif;
+    margin: 0;
+    padding: 12px;
+    color: var(--figma-color-text, #333);
+    background: var(--figma-color-bg, #fff);
+  }
+
+  h2 {
+    font-size: 11px;
+    font-weight: 600;
+    margin: 0 0 10px;
+    color: var(--figma-color-text, #333);
+  }
+
+  label {
+    display: block;
+    margin: 12px 0 4px;
+    font-weight: 500;
+    color: var(--figma-color-text-secondary, #666);
+  }
+
+  select,
+  input[type="number"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px;
+    border: 1px solid var(--figma-color-border, #ddd);
+    border-radius: 6px;
+    font: inherit;
+    background: var(--figma-color-bg-secondary, #fff);
+    color: var(--figma-color-text, #333);
+  }
+
+  input[type="range"] {
+    width: 100%;
+    margin: 2px 0;
+    accent-color: var(--accent);
+  }
+
+  /* Chips de preset: seleção é elevação de superfície, não cor. */
+  .presets {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .presets button {
+    all: unset;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--figma-color-border, #ddd);
+    background: var(--figma-color-bg-secondary, #f5f5f5);
+    color: var(--figma-color-text-secondary, #666);
+    cursor: pointer;
+  }
+  .presets button[aria-pressed="true"] {
+    background: var(--figma-color-bg-selected, #e5e5ff);
+    border-color: var(--figma-color-border-selected, #999);
+    color: var(--figma-color-text, #333);
+    font-weight: 500;
+  }
+
+  button.primary {
+    width: 100%;
+    margin-top: 16px;
+    padding: 10px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+  button.primary:disabled {
+    background: var(--figma-color-bg-disabled, #b3b3b3);
+    color: var(--figma-color-text-ondisabled, #fff);
+    cursor: default;
+  }
+
+  details { margin-top: 14px; }
+  summary {
+    cursor: pointer;
+    font-weight: 500;
+    color: var(--figma-color-text-secondary, #666);
+    list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before { content: "▸ "; }
+  details[open] summary::before { content: "▾ "; }
+
   .row { display: flex; gap: 8px; }
   .row > * { flex: 1; }
-  .value { float: right; font-weight: 400; color: #888; }
-  .status { margin-top: 10px; padding: 7px; border-radius: 4px; background: #f5f5f5; }
-  .status.error { background: #ffe3e3; color: #a11; }
-  .hint { color: #888; margin-top: 10px; }
-  label.inline { display: flex; align-items: center; gap: 6px; font-weight: 400; }
-  label.inline input { width: auto; }
+
+  /* Valores que mudam ao arrastar não podem alterar a largura da linha. */
+  .value {
+    float: right;
+    font-weight: 400;
+    font-variant-numeric: tabular-nums;
+    color: var(--figma-color-text-tertiary, #999);
+  }
+
+  .status {
+    margin-top: 12px;
+    padding: 8px;
+    border-radius: 6px;
+    background: var(--figma-color-bg-secondary, #f5f5f5);
+    color: var(--figma-color-text-secondary, #666);
+  }
+  .status.error {
+    background: var(--figma-color-bg-danger-tertiary, #ffe3e3);
+    color: var(--figma-color-text-danger, #a11);
+  }
+
+  .hint {
+    margin-top: 10px;
+    color: var(--figma-color-text-tertiary, #999);
+  }
+
+  code {
+    background: var(--figma-color-bg-secondary, #f0f0f0);
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+
+  .inline { display: flex; align-items: center; gap: 6px; font-weight: 400; }
+  .inline input { width: auto; }
 </style>
 
-<label>Camada</label>
-<select id="layer">
-  <option value="inception_3b/output">3b — traços e texturas</option>
-  <option value="inception_4a/output">4a — espirais e olhos</option>
-  <option value="inception_4c/output" selected>4c — focinhos (clássico)</option>
-  <option value="inception_4d/output">4d — criaturas híbridas</option>
-  <option value="inception_4e/output">4e — formas compostas</option>
-  <option value="inception_5a/output">5a — peixes e répteis</option>
-  <option value="inception_5b/output">5b — quimeras</option>
-</select>
+<h2>Dream Canvas</h2>
 
-<label>Modelo</label>
-<select id="model">
-  <option value="bvlc" selected>bvlc — o DeepDream de 2015</option>
-  <option value="places365">places365 — templos e arcos</option>
-  <option value="torchvision">torchvision — mais suave</option>
-</select>
+<div class="presets" id="presets"></div>
 
-<label>Iterações <span class="value" id="iterations-value">10</span></label>
-<input type="range" id="iterations" min="1" max="60" value="10" />
-
-<label>Intensidade <span class="value" id="step-value">1.5</span></label>
-<input type="range" id="step" min="1" max="40" value="15" />
-
-<div class="row">
-  <div>
-    <label>Octaves</label>
-    <input type="number" id="octaves" value="4" min="1" max="8" />
-  </div>
-  <div>
-    <label>Resolução</label>
-    <input type="number" id="maxdim" value="1024" min="256" max="4096" step="128" />
-  </div>
-</div>
-
-<label class="inline">
-  <input type="checkbox" id="original" />
-  Manter o tamanho original da camada
-</label>
-
-<button id="run" disabled>Sonhar</button>
+<button class="primary" id="run" disabled>Sonhar</button>
 <div class="status" id="status">Conectando…</div>
+
+<details>
+  <summary>Ajuste fino</summary>
+
+  <label>Camada</label>
+  <select id="layer">
+    <option value="inception_3a/output">3a — traços e bordas</option>
+    <option value="inception_3b/output">3b — textura pura</option>
+    <option value="inception_4a/output">4a — espirais</option>
+    <option value="inception_4b/output">4b — olhos soltos</option>
+    <option value="inception_4c/output" selected>4c — focinhos e pelo</option>
+    <option value="inception_4d/output">4d — criaturas híbridas</option>
+    <option value="inception_4e/output">4e — formas compostas</option>
+    <option value="inception_5a/output">5a — peixes e répteis</option>
+    <option value="inception_5b/output">5b — quimeras</option>
+  </select>
+
+  <label>Modelo</label>
+  <select id="model">
+    <option value="bvlc" selected>Clássico — pesos originais de 2015</option>
+    <option value="places365">Cenários — templos e arcos</option>
+    <option value="torchvision">Suave — formas mais discretas</option>
+  </select>
+
+  <label>Iterações <span class="value" id="iterations-value">10</span></label>
+  <input type="range" id="iterations" min="1" max="60" value="10" />
+
+  <label>Força <span class="value" id="step-value">1.5</span></label>
+  <input type="range" id="step" min="1" max="40" value="15" />
+
+  <div class="row">
+    <div>
+      <label>Escalas</label>
+      <input type="number" id="octaves" value="4" min="1" max="8" />
+    </div>
+    <div>
+      <label>Resolução</label>
+      <input type="number" id="maxdim" value="1024" min="256" max="4096" step="128" />
+    </div>
+  </div>
+
+  <label class="inline" style="margin-top: 10px">
+    <input type="checkbox" id="original" />
+    Manter o tamanho original da camada
+  </label>
+</details>
+
 <div class="hint">
-  Precisa do servidor rodando:<br /><code>.venv/bin/python server.py</code>
+  Precisa do Dream Canvas rodando:<br /><code>.venv/bin/python server.py</code>
 </div>
 
 <script>
   // O Figma rejeita IP numérico em allowedDomains, então tem de ser o hostname.
   const API = "http://localhost:8000";
-  const status = document.getElementById("status");
-  const run = document.getElementById("run");
+
+  // Os mesmos estilos da interface principal, para o resultado bater.
+  const PRESETS = {
+    "Clássico 2015": { model: "bvlc", layer: "inception_4c/output", iterations: 10, step: 1.5 },
+    "Focinhos por toda parte": { model: "bvlc", layer: "inception_4c/output", iterations: 25, step: 2.0 },
+    "Criaturas híbridas": { model: "bvlc", layer: "inception_4d/output", iterations: 20, step: 1.5 },
+    "Quimeras": { model: "bvlc", layer: "inception_5b/output", iterations: 40, step: 2.0 },
+    "Só textura": { model: "bvlc", layer: "inception_3b/output", iterations: 10, step: 1.5 },
+    "Templos e arcos": { model: "places365", layer: "inception_4d/output", iterations: 20, step: 1.5 },
+    "Discreto": { model: "torchvision", layer: "inception_4c/output", iterations: 10, step: 1.5 },
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const status = $("status");
+  const run = $("run");
+  const iterations = $("iterations");
+  const step = $("step");
+  const original = $("original");
+
   let selectionCount = 0;
   let serverUp = false;
 
-  const original = document.getElementById("original");
-  original.onchange = () =>
-    (document.getElementById("maxdim").disabled = original.checked);
+  function showValues() {
+    $("iterations-value").textContent = iterations.value;
+    $("step-value").textContent = (step.value / 10).toFixed(1);
+  }
+  iterations.oninput = showValues;
+  step.oninput = showValues;
+  original.onchange = () => ($("maxdim").disabled = original.checked);
 
-  const iterations = document.getElementById("iterations");
-  const step = document.getElementById("step");
-  iterations.oninput = () =>
-    (document.getElementById("iterations-value").textContent = iterations.value);
-  step.oninput = () =>
-    (document.getElementById("step-value").textContent = (step.value / 10).toFixed(1));
+  // Presets
+  const presetBox = $("presets");
+  Object.keys(PRESETS).forEach((name, index) => {
+    const chip = document.createElement("button");
+    chip.textContent = name;
+    chip.setAttribute("aria-pressed", index === 0 ? "true" : "false");
+    chip.onclick = () => {
+      [...presetBox.children].forEach((c) => c.setAttribute("aria-pressed", "false"));
+      chip.setAttribute("aria-pressed", "true");
+      const p = PRESETS[name];
+      $("model").value = p.model;
+      $("layer").value = p.layer;
+      iterations.value = p.iterations;
+      step.value = Math.round(p.step * 10);
+      showValues();
+    };
+    presetBox.appendChild(chip);
+  });
 
   function say(text, isError) {
     status.textContent = text;
@@ -93,18 +254,17 @@
 
   function refreshButton() {
     run.disabled = !serverUp || selectionCount === 0;
-    if (!serverUp) return;
-    if (selectionCount === 0) say("Selecione uma camada no Figma.");
+    if (serverUp && selectionCount === 0) say("Selecione uma camada no Figma.");
   }
 
   fetch(`${API}/health`)
     .then((r) => r.json())
     .then((info) => {
       serverUp = true;
-      say(`Conectado — rodando em ${info.device}.`);
+      say(`Conectado, processando em ${info.device}.`);
       refreshButton();
     })
-    .catch(() => say("Servidor não encontrado. Rode server.py.", true));
+    .catch(() => say("Dream Canvas não encontrado. Rode o server.py.", true));
 
   onmessage = async (event) => {
     const message = event.data.pluginMessage;
@@ -112,14 +272,14 @@
 
     if (message.type === "selection") {
       selectionCount = message.count;
-      if (serverUp && message.count > 0) say(`Selecionado: ${message.name || message.count}`);
+      if (serverUp && message.count > 0) say(`Camada: ${message.name || message.count}`);
       refreshButton();
       return;
     }
 
     if (message.type === "error") {
       say(message.message, true);
-      run.disabled = false;
+      refreshButton();
       return;
     }
 
@@ -130,7 +290,7 @@
     }
 
     if (message.type === "exported") {
-      say("Sonhando… pode levar alguns segundos.");
+      say("Sonhando…");
       // btoa não aceita arrays grandes de uma vez; converte em blocos.
       const bytes = new Uint8Array(message.bytes);
       let binary = "";
@@ -144,15 +304,13 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             image: btoa(binary),
-            layers: [document.getElementById("layer").value],
-            model: document.getElementById("model").value,
+            layers: [$("layer").value],
+            model: $("model").value,
             iterations: Number(iterations.value),
             step_size: Number(step.value) / 10,
-            octaves: Number(document.getElementById("octaves").value),
+            octaves: Number($("octaves").value),
             // 0 diz ao servidor para não reduzir nada.
-            max_dim: document.getElementById("original").checked
-              ? 0
-              : Number(document.getElementById("maxdim").value),
+            max_dim: original.checked ? 0 : Number($("maxdim").value),
           }),
         });
 
@@ -184,7 +342,7 @@
 
   run.onclick = () => {
     run.disabled = true;
-    say("Exportando a seleção…");
+    say("Exportando a camada…");
     parent.postMessage({ pluginMessage: { type: "export" } }, "*");
   };
 </script>

@@ -1,5 +1,10 @@
 # Dream Canvas — plugin do Figma
 
+O painel acompanha o tema claro ou escuro do Figma: o manifesto declara
+`themeColors: true` e o CSS usa as variáveis que o Figma injeta. O único
+elemento fora desse esquema é o lavanda da ação primária, que é o acento do
+[design system](../DESIGN.md).
+
 Plugins do Figma rodam JavaScript num sandbox — não há como executar PyTorch lá
 dentro. Então o plugin exporta o nó selecionado como PNG, manda para o DeepDream
 rodando na sua máquina e insere o resultado de volta no documento.

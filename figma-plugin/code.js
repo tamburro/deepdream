@@ -44,7 +44,7 @@ figma.ui.onmessage = async (message) => {
 
     // Um retângulo novo ao lado do original preserva o que já estava lá.
     const rect = figma.createRectangle();
-    rect.name = `${source ? source.name : "DeepDream"} — dream`;
+    rect.name = `${source ? source.name : "Dream Canvas"} — dream`;
     rect.resize(message.width, message.height);
     if (source) {
       rect.x = source.x + source.width + 40;

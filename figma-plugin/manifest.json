@@ -6,8 +6,9 @@
   "ui": "ui.html",
   "editorType": ["figma"],
   "documentAccess": "dynamic-page",
+  "themeColors": true,
   "networkAccess": {
     "allowedDomains": ["http://localhost:8000"],
-    "reasoning": "Envia o nó selecionado para o DeepDream rodando na máquina do usuário e recebe a imagem processada de volta."
+    "reasoning": "Envia a camada selecionada para o Dream Canvas rodando na máquina do usuário e recebe a imagem processada de volta."
   }
 }
