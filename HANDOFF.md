@@ -108,9 +108,17 @@ o Space é grátis e muda a URL.
 - **O plugin do Figma só funciona na máquina que roda o `server.py`**, porque
   aponta para `localhost:8000`.
 - Vídeo e Zoom não existem no Space, por decisão — estourariam o teto de GPU.
-- O caminho por ladrilhos (imagens acima de `tile_size`) não existe no original
-  e afasta um pouco da referência.
 - Tema claro não existe. É decisão, não omissão.
+
+## Referência do autor
+
+[znah/deepdream_c](https://github.com/znah/deepdream_c) é a reescrita do próprio
+Mordvintsev, em C89 sem dependências (2021). Serve de oráculo de fidelidade.
+Confere com o nosso: camada `inception_4c_output`, objetivo L2
+(`grad[i] = val[i]`), passo `val += 1.5 * grad / mean(|grad|)` e octave 1.4
+bilinear. Diverge em três pontos: ele usa 7 octaves e 20 passos (nós, 4 e 10),
+**não** faz reinjeção de detalhe — a imagem cresce e continua — e o jitter dele
+é determinístico (`sx = passo*79, sy = passo*127`) em vez de aleatório.
 
 ## Armadilhas que custaram tempo
 

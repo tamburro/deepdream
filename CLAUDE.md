@@ -66,6 +66,7 @@ tanto uma PIL.Image quanto ativações já calculadas.
   backend traduz para o nome real do seu módulo via a terceira entrada de `MODELS`.
 - Imagens circulam como tensores `(3, H, W)` em `[0, 1]`; o pré-processamento de
   cada modelo acontece dentro do `FeatureExtractor.forward`.
-- Imagens maiores que `tile_size` usam o gradiente por ladrilhos. Esse caminho
-  não existe no original e afasta um pouco do resultado de referência: para
-  fidelidade máxima, manter a imagem abaixo de `tile_size`.
+- Imagens maiores que `tile_size` usam o gradiente por ladrilhos. Isto **não** é
+  um desvio: o `deepdream.c` do próprio Mordvintsev (2021) ladrilha sempre, com
+  o tamanho de entrada da rede como ladrilho. Antes havia uma nota aqui dizendo
+  o contrário; estava errada.
