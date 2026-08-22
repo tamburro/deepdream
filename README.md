@@ -8,7 +8,7 @@ sdk_version: 6.24.0
 app_file: app.py
 pinned: false
 license: apache-2.0
-short_description: DeepDream clássico do Google (2015) com os pesos bvlc_googlenet
+short_description: Reprodução fiel do DeepDream original do Google, de 2015
 ---
 
 # Dream Canvas
