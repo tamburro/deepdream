@@ -31,6 +31,7 @@ O remote `space` já está configurado no git local. `git push space main` publi
 | `local.py` | Mesma interface numa janela nativa (pywebview). |
 | `clipguide.py` | Objetivo por texto via CLIP. Roda em CPU de propósito. |
 | `dataset.py` | Baixa conjuntos do Wikimedia Commons para treinar. |
+| `train.py` | Fine-tuning do GoogLeNet. Gera checkpoint que o motor aceita. |
 | `figma-plugin/` | Plugin que fala com o `server.py`. |
 
 Dependências separadas de propósito: `requirements.txt` (núcleo + web),
@@ -83,6 +84,10 @@ chamada.
 | Vídeo, por quadro a 640px | ~0,7 s |
 | Zoom infinito, por quadro a 512px | ~0,4 s |
 | Build do Space | ~2 min |
+| Treino, lote de 16 a 224px, MPS | 0,16 s |
+| Treino, lote de 16 a 224px, CPU | 0,75 s |
+| CLIP, forward+backward 16 recortes, MPS | 39,5 s |
+| CLIP, forward+backward 16 recortes, CPU | 0,38 s |
 
 Flicker em vídeo, com movimento compensado (menor é melhor): entrada 1,86 ·
 quadro a quadro 6,69 · realimentado sem fluxo 8,32 · **realimentado + fluxo
@@ -153,8 +158,8 @@ existe), custa zero, mas a alocação de GPU numa rota não-Gradio é incerta.
 2. **CLIP com texto** — sonhar em direção a uma descrição escrita.
 3. **Preset deepdream.c** — feito.
 4. **Áudio-reativo** no zoom — feito.
-5. **Fine-tuning** do GoogLeNet num conjunto próprio. O `dataset.py` já monta o
-   conjunto; falta o script de treino.
+5. **Fine-tuning** — feito: `dataset.py` monta o conjunto e `train.py` treina.
+   Falta rodar de verdade num conjunto grande.
 
 **Antes de monetizar:** confirmar a licença dos pesos `places365` e `places205`
 (CSAIL/MIT, alguns termos são só para pesquisa). O `bvlc` diz "released for

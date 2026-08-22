@@ -219,6 +219,29 @@ deriva dele, inclusive um modelo treinado.
 
 O `manifest.csv` guarda origem, licença e autoria de cada arquivo.
 
+## Treinar no seu próprio conjunto
+
+Treinar o classificador num domínio novo reescreve as características das
+camadas intermediárias — e são elas que o DeepDream amplifica. Treinado em
+ilustração botânica, o modelo passa a fazer brotar pétalas em vez de focinhos.
+
+```bash
+.venv/bin/python train.py dataset/botanical -o modelos/botanico.pt
+.venv/bin/python deepdream.py foto.jpg -m modelos/botanico.pt
+```
+
+O checkpoint é aceito onde quer que um modelo seja pedido, inclusive em vídeo e
+zoom. Por padrão o treino congela tudo até `inception_3b`: as primeiras camadas
+aprendem bordas e cor, que não mudam entre domínios, e o DeepDream trabalha de
+`inception_4c` para frente.
+
+O pré-processamento do treino é **o mesmo** do `dream()` — Caffe, BGR, médias
+104/117/123. Treinar com a normalização da ImageNet e sonhar com a do Caffe
+produziria características inconsistentes com o que o motor espera.
+
+Medido num M4: 0,16 s por lote de 16 a 224px em MPS, contra 0,75 s em CPU.
+Diferente do CLIP, a convnet não sofre no backward do MPS.
+
 ## Plugin do Figma
 
 Exporta a camada selecionada, aplica o efeito e insere o resultado de volta no

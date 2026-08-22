@@ -118,6 +118,22 @@ def resolve_layer(name):
     )
 
 
+def _load_checkpoint(path, device):
+    """Carrega um checkpoint do train.py: arquitetura bvlc com cabeça própria."""
+    data = torch.load(path, map_location="cpu", weights_only=False)
+    loader, _, _ = MODELS[data.get("arch", "bvlc")]
+    base, transform = loader()
+    base.loss3_classifier = nn.Linear(1024, len(data["classes"]))
+    base.load_state_dict(data["state_dict"])
+    base.eval()
+    for p in base.parameters():
+        p.requires_grad_(False)
+    base.to(device)
+    if isinstance(transform, nn.Module):
+        transform.to(device)
+    return base, transform
+
+
 def load_model(model_name, device):
     """Carrega um modelo já no device pedido e o guarda em cache.
 
@@ -128,6 +144,15 @@ def load_model(model_name, device):
     """
     key = (model_name, str(device))
     if key not in _CACHE:
+        # Um caminho de arquivo é um modelo treinado pelo train.py.
+        if model_name not in MODELS:
+            if not Path(model_name).is_file():
+                raise ValueError(
+                    f"Modelo desconhecido: {model_name!r}. Use um de "
+                    f"{', '.join(MODELS)} ou o caminho de um checkpoint."
+                )
+            _CACHE[key] = _load_checkpoint(model_name, device)
+            return _CACHE[key]
         loader, _, _ = MODELS[model_name]
         base, transform = loader()
         base.eval()
@@ -150,7 +175,7 @@ class FeatureExtractor(nn.Module):
 
     def __init__(self, model_name, layers, device):
         super().__init__()
-        _, order, to_attr = MODELS[model_name]
+        _, order, to_attr = MODELS.get(model_name, MODELS[DEFAULT_MODEL])
         targets = [to_attr(resolve_layer(name)) for name in layers]
         indices = sorted({order.index(t) for t in targets})
 
@@ -408,7 +433,9 @@ def main():
         "-l", "--layers", default=DEFAULT_LAYER,
         help="Camadas separadas por vírgula, ex.: inception_4c/output",
     )
-    parser.add_argument("-m", "--model", choices=list(MODELS), default=DEFAULT_MODEL)
+    parser.add_argument("-m", "--model", default=DEFAULT_MODEL,
+                        help="bvlc, places365, places205, torchvision "
+                             "ou o caminho de um checkpoint do train.py")
     parser.add_argument("-n", "--iterations", type=int, default=DEFAULT_ITERATIONS)
     parser.add_argument("--step-size", type=float, default=DEFAULT_STEP_SIZE)
     parser.add_argument("--octaves", type=int, default=DEFAULT_OCTAVES)

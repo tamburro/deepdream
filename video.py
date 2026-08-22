@@ -410,7 +410,8 @@ def main():
     parser.add_argument("input", type=Path)
     parser.add_argument("-o", "--output", type=Path)
     parser.add_argument("-l", "--layers", default=DEFAULT_LAYER)
-    parser.add_argument("-m", "--model", default=DEFAULT_MODEL)
+    parser.add_argument("-m", "--model", default=DEFAULT_MODEL,
+                        help="Nome conhecido ou caminho de um checkpoint")
     parser.add_argument("-n", "--iterations", type=int, default=DEFAULT_ITERATIONS)
     parser.add_argument("--step-size", type=float, default=DEFAULT_STEP_SIZE)
     parser.add_argument("--octaves", type=int, default=DEFAULT_OCTAVES)
