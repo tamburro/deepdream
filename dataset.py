@@ -14,6 +14,7 @@ sem isso não há como publicar nem monetizar o que sair do treino.
 
 import argparse
 import csv
+import hashlib
 import io
 import json
 import sys
@@ -153,8 +154,11 @@ def is_open(license_text, strict=False):
 
 def fetch(item, folder, min_side):
     """Baixa, valida e grava em JPEG. Devolve o nome do arquivo ou None."""
-    name = "".join(c if c.isalnum() or c in "-_." else "_" for c in item["title"])
-    name = Path(name).with_suffix(".jpg").name
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in item["title"])
+    # Sufixo com hash do título: sem ele, títulos que só diferem em pontuação
+    # colapsam no mesmo nome e um sobrescreve o outro, em silêncio.
+    digest = hashlib.sha1(item["title"].encode()).hexdigest()[:8]
+    name = f"{safe[:80]}-{digest}.jpg"
     target = folder / name
     if target.exists():
         return name
@@ -196,7 +200,19 @@ def build(category, out_dir, depth, per_class, width, min_side, workers,
             writer.writerow(["classe", "arquivo", "titulo", "licenca", "autoria", "origem"])
 
         for index, name in enumerate(classes, 1):
-            items = files_in(name, per_class, width)
+            done = out_dir / "".join(
+                c if c.isalnum() or c in "-_" else "_" for c in name
+            )[:80]
+            if done.is_dir() and len(list(done.glob("*.jpg"))) >= per_class:
+                print(f"  [{index}/{len(classes)}] {name[:44]:46} "
+                      f"— já completa, pulando", flush=True)
+                continue
+            try:
+                items = files_in(name, per_class, width)
+            except Exception as error:
+                print(f"  [{index}/{len(classes)}] {name[:44]:46} "
+                      f"— falhou ({type(error).__name__}), seguindo", flush=True)
+                continue
             if only_open:
                 items = [i for i in items if is_open(i["license"], strict)]
             if len(items) < min_per_class:
@@ -209,8 +225,15 @@ def build(category, out_dir, depth, per_class, width, min_side, workers,
             )[:80]
             folder.mkdir(exist_ok=True)
 
-            with ThreadPoolExecutor(max_workers=workers) as pool:
-                results = list(pool.map(lambda i: (i, fetch(i, folder, min_side)), items))
+            try:
+                with ThreadPoolExecutor(max_workers=workers) as pool:
+                    results = list(
+                        pool.map(lambda i: (i, fetch(i, folder, min_side)), items)
+                    )
+            except Exception as error:
+                print(f"  [{index}/{len(classes)}] {name[:44]:46} "
+                      f"— erro ao baixar ({type(error).__name__}), seguindo", flush=True)
+                continue
 
             kept = [(i, f) for i, f in results if f]
 
