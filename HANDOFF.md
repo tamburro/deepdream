@@ -141,6 +141,10 @@ Medido: o jitter determinístico **não** resolve a não-determinância em MPS
 - Com `-shortest`, o ffmpeg fecha a entrada quando a trilha mais curta acaba e
   os últimos `write` estouram `BrokenPipeError`. É fim normal: `_write_frame`
   trata e encerra o laço.
+- A Wikimedia limita a taxa de download por concorrência, e o erro chega como
+  HTTPError. Medido em 40 imagens, sem retentativa: 1 worker acerta 34, 2
+  acertam 30, **4 acertam só 5**. Com 2 workers e respeitando o `Retry-After`,
+  o acerto vai a 58/60. Não aumentar `--workers`.
 - `short_description` do Space tem limite de **60 caracteres**; o push é
   rejeitado se passar.
 - No Gradio 6, `theme` e `css` vão no `launch()`, não no construtor de `Blocks`.

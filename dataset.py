@@ -13,12 +13,15 @@ sem isso não há como publicar nem monetizar o que sair do treino.
 """
 
 import argparse
+import collections
 import csv
 import hashlib
 import io
+import shutil
 import json
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -152,7 +155,10 @@ def is_open(license_text, strict=False):
     return any(token in lowered for token in allowed)
 
 
-def fetch(item, folder, min_side):
+FAILURES = collections.Counter()
+
+
+def fetch(item, folder, min_side, retries=4):
     """Baixa, valida e grava em JPEG. Devolve o nome do arquivo ou None."""
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in item["title"])
     # Sufixo com hash do título: sem ele, títulos que só diferem em pontuação
@@ -163,16 +169,32 @@ def fetch(item, folder, min_side):
     if target.exists():
         return name
 
-    try:
-        request = urllib.request.Request(item["url"], headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(request, timeout=60) as response:
-            data = response.read()
-        image = Image.open(io.BytesIO(data)).convert("RGB")
-    except Exception:
-        return None
+    for attempt in range(retries):
+        try:
+            request = urllib.request.Request(
+                item["url"], headers={"User-Agent": USER_AGENT}
+            )
+            with urllib.request.urlopen(request, timeout=60) as response:
+                data = response.read()
+            image = Image.open(io.BytesIO(data)).convert("RGB")
+            break
+        except urllib.error.HTTPError as error:
+            if attempt == retries - 1:
+                FAILURES[f"HTTP {error.code}"] += 1
+                return None
+            # A Wikimedia diz quanto esperar quando limita a taxa; ignorar isso
+            # e tentar de novo na hora só faz o próximo pedido falhar também.
+            wait = error.headers.get("Retry-After")
+            time.sleep(float(wait) if wait and wait.isdigit() else 2.0 * (attempt + 1))
+        except Exception as error:
+            if attempt == retries - 1:
+                FAILURES[type(error).__name__] += 1
+                return None
+            time.sleep(2.0 * (attempt + 1))
 
     # Abaixo disso o recorte de 224 do treino viraria ampliação de imagem pobre.
     if min(image.size) < min_side:
+        FAILURES["pequena"] += 1
         return None
 
     image.save(target, "JPEG", quality=92)
@@ -241,9 +263,9 @@ def build(category, out_dir, depth, per_class, width, min_side, workers,
             # caem no filtro de resolução, e uma pasta com 3 arquivos — ou vazia
             # — quebra o ImageFolder e não serve para treinar.
             if len(kept) < min_per_class:
-                for _, filename in kept:
-                    (folder / filename).unlink(missing_ok=True)
-                folder.rmdir()
+                # rmtree, não rmdir: a pasta pode ter sobras de outra execução,
+                # e o rmdir estourava OSError e derrubava o processo inteiro.
+                shutil.rmtree(folder, ignore_errors=True)
                 print(f"  [{index}/{len(classes)}] {name[:44]:46} "
                       f"— só {len(kept)} baixadas, classe descartada", flush=True)
                 continue
@@ -256,6 +278,8 @@ def build(category, out_dir, depth, per_class, width, min_side, workers,
             print(f"  [{index}/{len(classes)}] {name[:44]:46} "
                   f"{len(kept):4d} imagens", flush=True)
 
+    if FAILURES:
+        print("\nDescartes:", dict(FAILURES.most_common()))
     print(f"\n{total} imagens em {out_dir}")
     print(f"Procedência em {manifest}")
     return total
@@ -278,7 +302,8 @@ def main():
                         help="Largura pedida à API. 512 basta para treinar a 224")
     parser.add_argument("--min-side", type=int, default=256,
                         help="Descarta imagens com o menor lado abaixo disso")
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=2,
+                        help="Medido: 2 workers acertam 75%% e 4 só 12%%, porque a Wikimedia limita a taxa")
     parser.add_argument("--all-licenses", action="store_true",
                         help="Não filtrar por licença aberta. Não recomendado")
     parser.add_argument("--max-classes", type=int,
