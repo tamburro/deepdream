@@ -231,7 +231,13 @@ ilustração botânica, o modelo passa a fazer brotar pétalas em vez de focinho
 ```
 
 O checkpoint é aceito onde quer que um modelo seja pedido, inclusive em vídeo e
-zoom. Por padrão o treino congela tudo até `inception_3b`: as primeiras camadas
+zoom. Na interface, tudo que estiver em `modelos/*.pt` aparece sozinho no
+dropdown, com o número de classes e o acerto, e ganha um chip de estilo próprio
+— sem isso, clicar num preset devolveria o modelo para o `bvlc`.
+
+O vocabulário muda por camada, como no original, mas com outro conteúdo. No
+modelo botânico: `4c` dá rosetas de pétalas, `5a` formas bulbosas com nervura,
+`5b` espirais de capítulo floral. Por padrão o treino congela tudo até `inception_3b`: as primeiras camadas
 aprendem bordas e cor, que não mudam entre domínios, e o DeepDream trabalha de
 `inception_4c` para frente.
 

@@ -146,6 +146,14 @@ Para refazer:
 
 O download leva 2 a 3 horas com 2 workers — não aumente, ver abaixo.
 
+Resultado: 49,8% de acerto em 181 classes, 12 épocas de ~3 min. Por camada,
+`4c` dá rosetas de pétalas, `5a` formas bulbosas com nervura e `5b` espirais de
+capítulo floral.
+
+`app.py` varre `modelos/*.pt` e monta uma opção de modelo **e um preset** para
+cada. O preset é necessário: sem ele, escolher o modelo em Ajuste fino e clicar
+num chip de estilo devolveria tudo para o `bvlc`.
+
 ## Armadilhas que custaram tempo
 
 - `allowedDomains` do Figma **rejeita IP numérico**. Tem de ser `localhost`.

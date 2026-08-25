@@ -125,6 +125,35 @@ MODEL_CHOICES = [
     ("Suave — outro treinamento, formas mais discretas", "torchvision"),
 ]
 
+# Checkpoints do train.py entram na lista sozinhos. Sem isso, treinar um modelo
+# só serviria pela linha de comando.
+CUSTOM_DIR = Path(os.environ.get("DEEPDREAM_MODELS_DIR", "modelos"))
+
+
+def custom_models():
+    if not CUSTOM_DIR.is_dir():
+        return []
+    found = []
+    for path in sorted(CUSTOM_DIR.glob("*.pt")):
+        label = path.stem.replace("_", " ").capitalize()
+        try:
+            import torch
+
+            data = torch.load(path, map_location="cpu", weights_only=False)
+            classes = len(data.get("classes", []))
+            accuracy = data.get("accuracy")
+            detail = f"{classes} classes"
+            if accuracy:
+                detail += f", {accuracy:.0%} de acerto"
+            label = f"{label} — treinado por você ({detail})"
+        except Exception:
+            label = f"{label} — treinado por você"
+        found.append((label, str(path)))
+    return found
+
+
+MODEL_CHOICES += custom_models()
+
 MODE_CHOICES = [("Clássico", "l2"), ("Suave", "mean")]
 
 # jitter_mode e pyramid ausentes = receita do notebook em Caffe.
@@ -150,6 +179,14 @@ PRESETS = {
                                pyramid="grow"),
 }
 
+# Cada modelo treinado ganha um preset. Sem isso, escolher o modelo em Ajuste
+# fino e depois clicar num preset o devolveria para o bvlc.
+for _label, _path in custom_models():
+    PRESETS[_label.split(" — ")[0]] = dict(
+        model=_path, layers=["inception_4c/output"], iterations=25,
+        step_size=2.0, octaves=4, octave_scale=1.4,
+    )
+
 LAYER_GUIDE = """
 Cada camada da rede aprendeu a reconhecer coisas diferentes. Escolher uma
 determina o que vai brotar da sua imagem.
@@ -165,7 +202,10 @@ determina o que vai brotar da sua imagem.
 | `5b` | Quimeras: macacos, lagartos, cobras |
 
 As camadas fundas (`5a`, `5b`) precisam de 30 a 50 iterações para render bem.
-O guia vale para os modelos treinados na ImageNet — o Clássico e o Suave.
+
+Esta tabela vale para os modelos treinados na ImageNet. **Num modelo seu, o
+vocabulário muda**: no botânico, `4c` dá rosetas de pétalas, `5a` dá formas
+bulbosas com nervura, e `5b` dá espirais de capítulo floral.
 """
 
 
