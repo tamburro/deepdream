@@ -150,6 +150,13 @@ Resultado: 49,8% de acerto em 181 classes, 12 épocas de ~3 min. Por camada,
 `4c` dá rosetas de pétalas, `5a` formas bulbosas com nervura e `5b` espirais de
 capítulo floral.
 
+**Mais épocas não deram dreams melhores.** Com 20 épocas o acerto sobe para
+52,0%, mas a perda de treino cai a 0,141 e o resultado visual se afasta do
+botânico: em `5b` aparecem cabeças de pássaro no lugar das espirais florais.
+Rede mais discriminativa amplifica objeto, não textura. O acerto do
+classificador é indicador fraco do que interessa aqui — o padrão continua
+`botanico.pt`, de 12 épocas.
+
 `app.py` varre `modelos/*.pt` e monta uma opção de modelo **e um preset** para
 cada. O preset é necessário: sem ele, escolher o modelo em Ajuste fino e clicar
 num chip de estilo devolveria tudo para o `bvlc`.
