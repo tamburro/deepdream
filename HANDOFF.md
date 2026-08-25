@@ -85,6 +85,7 @@ chamada.
 | Zoom infinito, por quadro a 512px | ~0,4 s |
 | Build do Space | ~2 min |
 | Treino, lote de 16 a 224px, MPS | 0,16 s |
+| Treino, época de 23,5k imagens, MPS | ~178 s |
 | Treino, lote de 16 a 224px, CPU | 0,75 s |
 | CLIP, forward+backward 16 recortes, MPS | 39,5 s |
 | CLIP, forward+backward 16 recortes, CPU | 0,38 s |
@@ -132,6 +133,19 @@ Medido: o jitter determinístico **não** resolve a não-determinância em MPS
 (diferença média de 5/255), porque ela vem dos kernels. Mas em CPU,
 `sequence` + `grow` é bit-exato sem seed.
 
+## O modelo botânico
+
+`dataset/botanical` e `modelos/botanico.pt` estão fora do git (`.gitignore`).
+Para refazer:
+
+```bash
+.venv/bin/python dataset.py --category "Botanical illustrations by family" \
+  --per-class 250 --min-per-class 40 --width 512 --all-licenses -o dataset/botanical
+.venv/bin/python train.py dataset/botanical -o modelos/botanico.pt -e 12
+```
+
+O download leva 2 a 3 horas com 2 workers — não aumente, ver abaixo.
+
 ## Armadilhas que custaram tempo
 
 - `allowedDomains` do Figma **rejeita IP numérico**. Tem de ser `localhost`.
@@ -162,8 +176,11 @@ existe), custa zero, mas a alocação de GPU numa rota não-Gradio é incerta.
 2. **CLIP com texto** — sonhar em direção a uma descrição escrita.
 3. **Preset deepdream.c** — feito.
 4. **Áudio-reativo** no zoom — feito.
-5. **Fine-tuning** — feito: `dataset.py` monta o conjunto e `train.py` treina.
-   Falta rodar de verdade num conjunto grande.
+5. **Fine-tuning** — feito e rodado. `dataset/botanical` tem 27.717 imagens em
+   181 famílias (8,7 GB), e `modelos/botanico.pt` chegou a 49,8% de acerto em
+   12 épocas, ~3 min cada. O acerto ainda subia no fim: mais épocas devem
+   render. O resultado visual é inequívoco — some o focinho de cachorro,
+   aparecem rosetas e frondes.
 
 **Antes de monetizar:** confirmar a licença dos pesos `places365` e `places205`
 (CSAIL/MIT, alguns termos são só para pesquisa). O `bvlc` diz "released for
